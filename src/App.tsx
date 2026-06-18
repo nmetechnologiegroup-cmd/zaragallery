@@ -81,7 +81,18 @@ export default function App() {
           if (data.customers) setCustomers(data.customers);
           if (data.promotions) setPromotions(data.promotions);
           if (data.stockMovements) setStockMovements(data.stockMovements);
-          if (data.messages) setMessages(data.messages);
+          
+          // Initial messages load
+          try {
+            const mRes = await fetch('/api/messages');
+            if (mRes.ok) {
+              const mData = await mRes.json();
+              setMessages(mData);
+            }
+          } catch (e) {
+            console.error('Error loading initial messages:', e);
+          }
+
           if (data.pendingTickets) setPendingTickets(data.pendingTickets);
           if (data.settings) setSettings({ ...INITIAL_SETTINGS, ...data.settings });
           if (data.wholesalers) setWholesalers(data.wholesalers);
@@ -145,9 +156,10 @@ export default function App() {
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
 
     saveTimeoutRef.current = setTimeout(async () => {
+      // EXCLUDE messages from the general POS/Settings save block to prevent write race-conditions
       const dataToSave = {
         products, orders, users, cashMovements, auditLogs, 
-        customers, promotions, stockMovements, messages,
+        customers, promotions, stockMovements,
         pendingTickets, settings, wholesalers, wholesaleOrders,
         currentSession, sessionsHistory,
         lastUpdated: new Date().toISOString()
@@ -174,7 +186,44 @@ export default function App() {
     return () => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
-  }, [products, orders, users, cashMovements, auditLogs, customers, promotions, stockMovements, messages, pendingTickets, settings, wholesalers, wholesaleOrders, currentSession, sessionsHistory, isInitialized]);
+  }, [products, orders, users, cashMovements, auditLogs, customers, promotions, stockMovements, pendingTickets, settings, wholesalers, wholesaleOrders, currentSession, sessionsHistory, isInitialized]);
+
+  // Real-time Chat poller: Polls messages independently every 4 seconds
+  useEffect(() => {
+    let timerId: NodeJS.Timeout;
+
+    const pollMessages = async () => {
+      try {
+        const res = await fetch('/api/messages?t=' + Date.now());
+        if (res.ok) {
+          const fetchedMsgs = await res.json();
+          // Deep compare before setting state to prevent infinite react-render triggers
+          if (JSON.stringify(fetchedMsgs) !== JSON.stringify(messages)) {
+            setMessages(fetchedMsgs);
+          }
+        }
+      } catch (err) {
+        console.error('Error polling chat messages:', err);
+      }
+    };
+
+    pollMessages();
+    timerId = setInterval(pollMessages, 4000);
+
+    return () => clearInterval(timerId);
+  }, [messages]);
+
+  // Security: Immediate logout for suspended users
+  useEffect(() => {
+    if (currentUser) {
+      const activeState = users.find(u => u.id === currentUser.id);
+      if (activeState && activeState.isActive === false) {
+        sessionStorage.removeItem('zg_logged_in_user');
+        setCurrentUser(null);
+        alert("🔒 SESSION VERROUILLÉE : Votre compte d'accès Zara a été suspendu par la Direction.");
+      }
+    }
+  }, [users, currentUser]);
 
   // Payment Window Auto-Lock logic
   useEffect(() => {
@@ -314,11 +363,32 @@ export default function App() {
     addAuditLog('DATABASE_BACKUP', `Une copie de sauvegarde de la base de données a été téléchargée par ${currentUser?.name}`);
   };
   const setMessagesFromChat = (newMessages: ChatMessage[] | ((prev: ChatMessage[]) => ChatMessage[])) => {
+    let resolved: ChatMessage[] = [];
     if (typeof newMessages === 'function') {
-      setMessages(prev => newMessages(prev));
+      setMessages(prev => {
+        resolved = newMessages(prev);
+        const lastMsg = resolved[resolved.length - 1];
+        if (lastMsg && (!prev.length || prev[prev.length - 1].id !== lastMsg.id)) {
+          postMessageToServer(lastMsg);
+        }
+        return resolved;
+      });
     } else {
+      resolved = newMessages;
       setMessages(newMessages);
+      const lastMsg = resolved[resolved.length - 1];
+      if (lastMsg && (!messages.length || messages[messages.length - 1].id !== lastMsg.id)) {
+        postMessageToServer(lastMsg);
+      }
     }
+  };
+
+  const postMessageToServer = (msg: ChatMessage) => {
+    fetch('/api/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(msg)
+    }).catch(err => console.error('Error sending intercom message:', err));
   };
 
   return (

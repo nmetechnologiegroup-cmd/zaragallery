@@ -204,6 +204,17 @@ server {
     # Configuration du cache pour les images et assets lourds
     location ~* \.(?:ico|css|js|gif|jpe?g|png|woff2?|eot|otf|ttf|svg)$ {
         proxy_pass http://zara_backend;
+        
+        # En-têtes indispensables pour éviter l'erreur 403 (Forbidden) de sécurité du serveur backend
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
         expires 30d;
         add_header Cache-Control "public, no-transform";
     }

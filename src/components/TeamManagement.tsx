@@ -487,23 +487,23 @@ export default function TeamManagement({
 
   // --- SETTINGS LOGIC ---
   const [localSettings, setLocalSettings] = useState<AppSettings>(settings);
-  const [isDirty, setIsDirty] = useState(false);
+  const [isDirty] = useState(false); // Legacy flag, false now because we save instantly
   const [saveFeedback, setSaveFeedback] = useState('');
 
   useEffect(() => {
-    if (!isDirty) {
-      setLocalSettings(settings);
-    }
-  }, [settings, isDirty]);
+    setLocalSettings(settings);
+  }, [settings]);
 
   const updateSettings = (updates: Partial<AppSettings>) => {
-    setLocalSettings(prev => ({ ...prev, ...updates }));
-    setIsDirty(true);
+    const nextSettings = { ...localSettings, ...updates };
+    setLocalSettings(nextSettings);
+    setSettings(nextSettings); // Immediately commit to global state (triggers real-time debounced save to server)
+    setSaveFeedback('Enregistré en temps réel');
+    setTimeout(() => setSaveFeedback(''), 2000);
   };
 
   const handleSaveSettings = () => {
     setSettings(localSettings);
-    setIsDirty(false);
     setSaveFeedback('Modifications enregistrées avec succès');
     setTimeout(() => setSaveFeedback(''), 3000);
   };

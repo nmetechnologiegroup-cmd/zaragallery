@@ -44,6 +44,17 @@ async function startServer() {
         )
       `);
       
+      // Initialize app_messages structure
+      await connection.query(`
+        CREATE TABLE IF NOT EXISTS app_messages (
+          id VARCHAR(255) PRIMARY KEY,
+          sender_id VARCHAR(255) NOT NULL,
+          receiver_id VARCHAR(255) NOT NULL,
+          text TEXT NOT NULL,
+          timestamp VARCHAR(255) NOT NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
+
       // Seed if empty
       const [rows] = await connection.query('SELECT COUNT(*) as count FROM app_state WHERE id = 1');
       if ((rows as any[])[0].count === 0) {
@@ -98,7 +109,11 @@ async function startServer() {
       const dataStr = JSON.stringify(req.body, null, 2);
       
       if (dbPool) {
-        await dbPool.query('UPDATE app_state SET data = ? WHERE id = 1', [dataStr]);
+        // Use UPSERT to guarantee that row id=1 is created/updated
+        await dbPool.query(`
+          INSERT INTO app_state (id, data) VALUES (1, ?)
+          ON DUPLICATE KEY UPDATE data = VALUES(data)
+        `, [dataStr]);
         
         // Sync orders into the partitioned transactions_history table
         if (req.body.orders && Array.isArray(req.body.orders)) {
@@ -107,6 +122,9 @@ async function startServer() {
             await connection.beginTransaction();
             for (const order of req.body.orders) {
               const orderDate = new Date(order.date).toISOString().slice(0, 19).replace('T', ' ');
+              const clientName = order.customer?.name || null;
+              const paymentMethodStr = order.payments?.map((p: any) => p.method).join(', ') || 'CASH';
+              
               await connection.query(`
                 INSERT INTO transactions_history (id, date, client_name, total, payment_method, items, created_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -118,9 +136,9 @@ async function startServer() {
               `, [
                 order.id, 
                 orderDate,
-                order.customerName || null,
+                clientName,
                 order.total,
-                order.paymentMethod,
+                paymentMethodStr,
                 JSON.stringify(order.items),
                 orderDate
               ]);
@@ -141,6 +159,64 @@ async function startServer() {
     } catch (error) {
       console.error('Save error:', error);
       res.status(500).json({ error: 'Failed to save data' });
+    }
+  });
+
+  // --- MESSAGES COMPONENT API (INDEPENDENT FROM CORE DATA SYSTEM FOR HIGH CONCURRENCY SAFETY) ---
+  app.get('/api/messages', async (req, res) => {
+    try {
+      if (dbPool) {
+        const [rows] = await dbPool.query('SELECT * FROM app_messages ORDER BY timestamp ASC');
+        const messages = (rows as any[]).map(r => ({
+          id: r.id,
+          senderId: r.sender_id,
+          receiverId: r.receiver_id === 'GLOBAL' ? undefined : r.receiver_id,
+          text: r.text,
+          timestamp: r.timestamp
+        }));
+        return res.json(messages);
+      }
+      
+      const filePath = path.join(currentDirname, 'zara_messages.json');
+      try {
+        const content = await fs.readFile(filePath, 'utf-8');
+        res.json(JSON.parse(content));
+      } catch (e) {
+        res.json([]);
+      }
+    } catch (err) {
+      console.error('Get messages error:', err);
+      res.status(500).json({ error: 'Failed to retrieve messages' });
+    }
+  });
+
+  app.post('/api/messages', async (req, res) => {
+    try {
+      const { id, senderId, receiverId, text, timestamp } = req.body;
+      if (!id || !senderId || !text || !timestamp) {
+        return res.status(400).json({ error: 'Missing required message parameters' });
+      }
+
+      if (dbPool) {
+        await dbPool.query(`
+          INSERT INTO app_messages (id, sender_id, receiver_id, text, timestamp)
+          VALUES (?, ?, ?, ?, ?)
+          ON DUPLICATE KEY UPDATE text = VALUES(text)
+        `, [id, senderId, receiverId || 'GLOBAL', text, timestamp]);
+      } else {
+        const filePath = path.join(currentDirname, 'zara_messages.json');
+        let current = [];
+        try {
+          const content = await fs.readFile(filePath, 'utf-8');
+          current = JSON.parse(content);
+        } catch (e) {}
+        current.push({ id, senderId, receiverId: receiverId || 'GLOBAL', text, timestamp });
+        await fs.writeFile(filePath, JSON.stringify(current, null, 2));
+      }
+      res.json({ success: true });
+    } catch (err) {
+      console.error('Post message error:', err);
+      res.status(500).json({ error: 'Failed to save message' });
     }
   });
 
