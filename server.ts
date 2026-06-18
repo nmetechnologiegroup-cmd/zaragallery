@@ -208,9 +208,10 @@ async function startServer() {
     });
 
     serverInstance.on('error', (err: any) => {
-      if (err.code === 'EADDRINUSE' && portToTry === PORT && PORT !== 3001) {
-        console.warn(`⚠️ Le port ${portToTry} est déjà occupé. Tentative de repli automatique sur le port 3001...`);
-        listenWithFallback(3001);
+      const fallbackPort = PORT + 1;
+      if (err.code === 'EADDRINUSE' && portToTry === PORT) {
+        console.warn(`⚠️ Le port ${portToTry} est déjà occupé. Tentative de repli automatique sur le port ${fallbackPort}...`);
+        listenWithFallback(fallbackPort);
       } else {
         console.error('❌ Erreur de démarrage du serveur :', err);
       }

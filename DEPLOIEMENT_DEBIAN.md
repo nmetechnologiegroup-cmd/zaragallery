@@ -38,11 +38,11 @@ apt update && apt upgrade -y
 apt install -y curl git ufw build-essential
 ```
 
-Saisissez les règles initiales de pare-feu UFW pour protéger l'OS et ouvrir le port de secours 6000 de Nginx :
+Saisissez les règles initiales de pare-feu UFW pour protéger l'OS et ouvrir le port de secours 8085 de Nginx :
 ```bash
 ufw allow OpenSSH
 ufw allow 'Nginx Full'
-ufw allow 6000/tcp
+ufw allow 8085/tcp
 ufw --force enable
 ```
 
@@ -99,7 +99,7 @@ nano .env
 ```
 Ajoutez les variables requises (ajustez selon vos secrets) :
 ```env
-PORT=3000
+PORT=3005
 NODE_ENV=production
 # Si une clé API Gemini est utilisée en arrière-plan
 GEMINI_API_KEY=votre_cle_api_securisee
@@ -141,7 +141,10 @@ pm2 logs "zara-gallery-pos"
 
 ## Étape 5 : Configuration Reverse Proxy Nginx
 
-Si le port standard **80** est déjà occupé sur votre serveur Debian par un autre service (ex: Apache ou un autre site), nous configurons Nginx pour écouter sur le port **6000**. Tout le trafic sera retransmis de manière transparente vers l'application s'exécutant sur le port interne `3000` (ou `3001` en cas d'occupation).
+Si le port standard **80** est déjà occupé sur votre serveur Debian par un autre service (ex: Apache ou un autre site), nous configurons Nginx pour écouter sur le port **8085**. Tout le trafic sera retransmis de manière transparente vers l'application s'exécutant sur le port interne `3005` (ou `3006` en cas d'occupation).
+
+> ⚠️ **ATTENTION : N'utilisez PAS le port 6000 !**
+> Tous les navigateurs web modernes (Firefox, Chrome, Safari, Edge) bloquent le port `6000` par mesure de sécurité (car il est réservé au protocole X11). Tenter d'accéder à `http://votre-ip:6000` déclenchera systématiquement l'erreur *"Cette adresse est interdite"* (Firefox) ou `ERR_UNSAFE_PORT` (Chrome). Le port **8085** est totalement sécurisé, autorisé par les navigateurs et libre d'utilisation.
 
 Installez Nginx :
 ```bash
@@ -161,22 +164,32 @@ nano /etc/nginx/sites-available/zara-gallery
 Collez la configuration d'ingénierie optimisée suivante :
 
 ```nginx
+# Pool de serveurs backend avec basculement automatique
+upstream zara_backend {
+    server 127.0.0.1:3005 max_fails=1 fail_timeout=10s;
+    server 127.0.0.1:3006 backup; # Port de repli automatique si 3005 est déjà occupé
+}
+
 server {
-    listen 6000;
-    server_name _; # Écoute sur toutes les requêtes arrivant sur le port 6000
+    listen 8085;
+    server_name _; # Écoute sur toutes les requêtes arrivant sur le port 8085
 
     # Gzip Compression active pour accélérer le chargement sur mobile (Ouagadougou / Réseaux lents)
     gzip on;
     gzip_types text/plain text/css application/json application/javascript text/xml application/xml;
     gzip_min_length 1000;
 
-    # Serveur proxy vers le backend Express / Node s'exécutant sur le port 3000
-    # (Ou port 3001 si le port 3000 de votre serveur Debian était déjà occupé)
+    # Correction de l'erreur "400 Bad Request - Request Header Or Cookie Too Large"
+    client_header_buffer_size 16k;
+    large_client_header_buffers 4 32k;
+
+    # Serveur proxy vers le backend Express / Node s'exécutant sur le port 3005
+    # (Ou port 3006 si le port 3005 de votre serveur Debian était déjà occupé)
     location / {
-        proxy_pass http://127.0.0.1:3000;
+        proxy_pass http://zara_backend;
         
-        # En cas d'erreur de connexion sur le port 3000, Nginx essaie gracieusement le port de repli 3001
-        proxy_next_upstream error timeout http_502;
+        # En cas d'erreur de connexion ou de Bad Gateway sur le port 3005, Nginx essaie gracieusement le port de repli 3006
+        proxy_next_upstream error timeout invalid_header http_502 http_503 http_504;
         
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
@@ -190,7 +203,7 @@ server {
 
     # Configuration du cache pour les images et assets lourds
     location ~* \.(?:ico|css|js|gif|jpe?g|png|woff2?|eot|otf|ttf|svg)$ {
-        proxy_pass http://127.0.0.1:3000;
+        proxy_pass http://zara_backend;
         expires 30d;
         add_header Cache-Control "public, no-transform";
     }
@@ -253,7 +266,7 @@ mkdir -p "$BACKUP_DIR"
 
 # Si l'application dispose d'une API locale d'extraction, sauvegardez le fichier JSON généré
 # Sinon, sauvegardez les fichiers de base du dossier .env ou dossiers persistants locaux
-curl -s http://127.0.0.1:3000/api/backup > "$BACKUP_DIR/backup_$DATE.json"
+curl -s http://127.0.0.1:3005/api/backup > "$BACKUP_DIR/backup_$DATE.json"
 
 # Conserver uniquement les 15 dernières sauvegardes pour préserver l'espace disque
 find "$BACKUP_DIR" -type f -name "backup_*.json" -mtime +15 -delete
