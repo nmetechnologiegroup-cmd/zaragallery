@@ -1,6 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { User, Role, AppSettings } from '../types';
-import { Users, UserPlus, Shield, Key, Trash2, Edit2, X, Check, Clock, Lock as LockIcon, Unlock, Settings2, ShieldCheck, ShieldAlert, ShoppingCart, History as HistoryIcon, Upload } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { User, Role, AppSettings, Product, Order, Customer, Promotion, CashMovement, AuditLogEntry, ProductMovement } from '../types';
+import { Wholesaler, WholesaleOrder } from '../types_wholesale';
+import { 
+  Users, UserPlus, Shield, Key, Trash2, Edit2, X, Check, Clock, 
+  Lock as LockIcon, Unlock, Settings2, ShieldCheck, ShieldAlert, 
+  ShoppingCart, History as HistoryIcon, Upload, Database, RefreshCw, 
+  FolderDown, FileSpreadsheet, HardDrive, AlertTriangle, Layers, Terminal 
+} from 'lucide-react';
 import { uploadImage } from '../utils/fileHelper';
 
 interface TeamManagementProps {
@@ -10,12 +16,292 @@ interface TeamManagementProps {
   settings: AppSettings;
   setSettings: (s: AppSettings) => void;
   onDownloadBackup: () => void;
+  products: Product[];
+  setProducts: (p: Product[]) => void;
+  orders: Order[];
+  setOrders: (o: Order[]) => void;
+  customers: Customer[];
+  setCustomers: (c: Customer[]) => void;
+  promotions: Promotion[];
+  setPromotions: (p: Promotion[]) => void;
+  cashMovements: CashMovement[];
+  setCashMovements: (cm: CashMovement[]) => void;
+  auditLogs: AuditLogEntry[];
+  setAuditLogs: (a: AuditLogEntry[]) => void;
+  stockMovements: ProductMovement[];
+  setStockMovements: (sm: ProductMovement[]) => void;
+  wholesalers: Wholesaler[];
+  setWholesalers: (w: Wholesaler[]) => void;
+  wholesaleOrders: WholesaleOrder[];
+  setWholesaleOrders: (wo: WholesaleOrder[]) => void;
+  currentSession: any;
+  setCurrentSession: (s: any) => void;
+  sessionsHistory: any[];
+  setSessionsHistory: (sh: any[]) => void;
+  messages: any[];
+  setMessages: (m: any[]) => void;
+  pendingTickets: any[];
+  setPendingTickets: (pt: any[]) => void;
 }
 
-export default function TeamManagement({ users, setUsers, currentUser, settings, setSettings, onDownloadBackup }: TeamManagementProps) {
-  const [activeTab, setActiveTab] = useState<'TEAM' | 'SETTINGS'>('TEAM');
+export default function TeamManagement({ 
+  users, setUsers, currentUser, settings, setSettings, onDownloadBackup,
+  products, setProducts, orders, setOrders, customers, setCustomers,
+  promotions, setPromotions, cashMovements, setCashMovements, auditLogs, setAuditLogs,
+  stockMovements, setStockMovements, wholesalers, setWholesalers,
+  wholesaleOrders, setWholesaleOrders, currentSession, setCurrentSession,
+  sessionsHistory, setSessionsHistory, messages, setMessages,
+  pendingTickets, setPendingTickets
+}: TeamManagementProps) {
+  const [activeTab, setActiveTab] = useState<'TEAM' | 'SETTINGS' | 'DATABASE'>('TEAM');
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
+  
+  // Database panel state
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [dbBackupFile, setDbBackupFile] = useState<File | null>(null);
+  const [dbImportStatus, setDbImportStatus] = useState<{ message: string; type: 'success' | 'error' | 'idle' }>({ message: '', type: 'idle' });
+  const [showPurgeModal, setShowPurgeModal] = useState(false);
+  const [purgeInput, setPurgeInput] = useState('');
+  const [purgePin, setPurgePin] = useState('');
+  const [purgeError, setPurgeError] = useState('');
+
+  // Handle Seeding of Demo Data
+  const handleSeedDemoData = () => {
+    if (!confirm("Voulez-vous injecter un ensemble de données de démonstration de haute qualité Zara ? Cela ajoutera de nouveaux articles et réinitialisera les compteurs d'audit.")) {
+      return;
+    }
+
+    // 1. Create top-tier sample products
+    const sampleProducts: Product[] = [
+      {
+        id: 'DEMOM-1',
+        name: 'Veste de tailleur Croisée Zara',
+        basePrice: 38000,
+        category: 'Femme',
+        subCategory: 'Vestes',
+        imageColor: 'Shirt',
+        wholesalePrice: 32000,
+        wholesaleMinQty: 5,
+        bulkPackQty: 10,
+        isWholesaleEnabled: true,
+        variants: [
+          { id: 'v-demom-1-noir-s', size: 'S', color: 'Noir', stock: 15, barcode: '30200101' },
+          { id: 'v-demom-1-noir-m', size: 'M', color: 'Noir', stock: 25, barcode: '30200102' },
+          { id: 'v-demom-1-noir-l', size: 'L', color: 'Noir', stock: 20, barcode: '30200103' },
+          { id: 'v-demom-1-blanc-s', size: 'S', color: 'Blanc', stock: 12, barcode: '30200104' },
+          { id: 'v-demom-1-blanc-m', size: 'M', color: 'Blanc', stock: 18, barcode: '30200105' }
+        ]
+      },
+      {
+        id: 'DEMOM-2',
+        name: 'Jean Droit Vintage Homme',
+        basePrice: 18000,
+        category: 'Homme',
+        subCategory: 'Jeans',
+        imageColor: 'Shirt',
+        wholesalePrice: 14000,
+        wholesaleMinQty: 10,
+        bulkPackQty: 12,
+        isWholesaleEnabled: true,
+        variants: [
+          { id: 'v-demom-2-bleu-32', size: '32', color: 'Bleu Denim', stock: 14, barcode: '30200201' },
+          { id: 'v-demom-2-bleu-34', size: '34', color: 'Bleu Denim', stock: 18, barcode: '30200202' },
+          { id: 'v-demom-2-noir-32', size: '32', color: 'Charbon', stock: 10, barcode: '30200203' },
+          { id: 'v-demom-2-noir-34', size: '34', color: 'Charbon', stock: 12, barcode: '30200204' }
+        ]
+      },
+      {
+        id: 'DEMOM-3',
+        name: 'Robe plissée en popeline',
+        basePrice: 28000,
+        category: 'Femme',
+        subCategory: 'Robes',
+        imageColor: 'Shirt',
+        wholesalePrice: 24000,
+        wholesaleMinQty: 4,
+        bulkPackQty: 8,
+        isWholesaleEnabled: true,
+        variants: [
+          { id: 'v-demom-3-vert-xs', size: 'XS', color: 'Vert d\'eau', stock: 8, barcode: '30200301' },
+          { id: 'v-demom-3-vert-s', size: 'S', color: 'Vert d\'eau', stock: 14, barcode: '30200302' },
+          { id: 'v-demom-3-vert-m', size: 'M', color: 'Vert d\'eau', stock: 15, barcode: '30200303' }
+        ]
+      },
+      {
+        id: 'DEMOM-4',
+        name: 'Sneakers Zara minimalistes',
+        basePrice: 24500,
+        category: 'Chaussures',
+        subCategory: 'Baskets',
+        imageColor: 'Footprints',
+        variants: [
+          { id: 'v-demom-4-blanc-41', size: '41', color: 'Blanc Pur', stock: 8, barcode: '30200401' },
+          { id: 'v-demom-4-blanc-42', size: '42', color: 'Blanc Pur', stock: 16, barcode: '30200402' },
+          { id: 'v-demom-4-blanc-43', size: '43', color: 'Blanc Pur', stock: 14, barcode: '30200403' },
+          { id: 'v-demom-4-noir-42', size: '42', color: 'Noir Intense', stock: 6, barcode: '30200404' }
+        ]
+      },
+      {
+        id: 'DEMOM-5',
+        name: 'Sac Bandoulière Croco',
+        basePrice: 19500,
+        category: 'Accessoires',
+        subCategory: 'Sacs',
+        imageColor: 'ShoppingBag',
+        variants: [
+          { id: 'v-demom-5-noir-uni', size: 'Unique', color: 'Noir Croco', stock: 12, barcode: '30200501' },
+          { id: 'v-demom-5-camel-uni', size: 'Unique', color: 'Camel Croco', stock: 8, barcode: '30200502' }
+        ]
+      }
+    ];
+
+    // Seed data override
+    setProducts(sampleProducts);
+    
+    // Create baseline wholesalers
+    const sampleWholesalers: Wholesaler[] = [
+      { id: 'GROS-SEED-1', name: 'Madame Kone Tall', companyName: 'Boutique Kone & Filles', phone: '+226 70 12 34 56', email: 'kone@fripes.bf', address: 'Marché Sankar Yaaré, Ouagadougou', balance: 50000, creditLimit: 2000000, createdAt: new Date().toISOString() },
+      { id: 'GROS-SEED-2', name: 'Mamadou Sawadogo', companyName: 'Sawadogo Import-Export', phone: '+226 76 88 99 00', email: 'sawadogo@gros.bf', address: 'Secteur 15, Ouagadougou', balance: 0, creditLimit: 5000000, createdAt: new Date().toISOString() }
+    ];
+    setWholesalers(sampleWholesalers);
+
+    // Initial log
+    const seedLog: AuditLogEntry = {
+      id: `LOG-SEED-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      user: currentUser.name,
+      action: 'DATABASE_SEED',
+      details: 'La base de données a été réinitialisée et enrichie avec la collection de test premium Zara par l\'Administrateur.',
+      severity: 'WARNING'
+    };
+    setAuditLogs([seedLog]);
+
+    // Clear sales history to match freshly seeded products
+    setOrders([]);
+    setWholesaleOrders([]);
+    setCustomers([
+      { id: 'c-seed-1', name: 'Zalissa Ouedraogo', phone: '70223344', loyaltyPoints: 200, totalSpent: 65000 },
+      { id: 'c-seed-2', name: 'Ibrahim Traoré', phone: '78556677', loyaltyPoints: 100, totalSpent: 28000 }
+    ]);
+    setCashMovements([
+      {
+        id: `MOV-SEED-${Date.now()}`,
+        type: 'IN',
+        amount: 25000,
+        reason: 'Fond de roulement initial (Seeding)',
+        date: new Date().toISOString(),
+        user: currentUser.name
+      }
+    ]);
+    setCurrentSession(null);
+    setSessionsHistory([]);
+    setMessages([]);
+    setPendingTickets([]);
+
+    setDbImportStatus({ message: 'Données de démonstration importées avec succès !', type: 'success' });
+    setTimeout(() => setDbImportStatus({ message: '', type: 'idle' }), 5500);
+  };
+
+  // Handle Full Safe Restoration from File (JSON Parsing & State override)
+  const handleRestoreBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const text = event.target?.result as string;
+        const parsed = JSON.parse(text);
+
+        // Security Validation checks
+        if (!parsed.products || !Array.isArray(parsed.products)) {
+          throw new Error("Format invalide : La collection de produits est manquante ou erronée.");
+        }
+
+        // Apply restoring logic with proper fallback limits
+        setProducts(parsed.products);
+        if (parsed.orders && Array.isArray(parsed.orders)) setOrders(parsed.orders);
+        if (parsed.customers && Array.isArray(parsed.customers)) setCustomers(parsed.customers);
+        if (parsed.promotions && Array.isArray(parsed.promotions)) setPromotions(parsed.promotions);
+        if (parsed.cashMovements && Array.isArray(parsed.cashMovements)) setCashMovements(parsed.cashMovements);
+        if (parsed.users && Array.isArray(parsed.users)) setUsers(parsed.users);
+        if (parsed.wholesalers && Array.isArray(parsed.wholesalers)) setWholesalers(parsed.wholesalers);
+        if (parsed.wholesaleOrders && Array.isArray(parsed.wholesaleOrders)) setWholesaleOrders(parsed.wholesaleOrders);
+        if (parsed.stockMovements && Array.isArray(parsed.stockMovements)) setStockMovements(parsed.stockMovements);
+        if (parsed.currentSession !== undefined) setCurrentSession(parsed.currentSession);
+        if (parsed.sessionsHistory && Array.isArray(parsed.sessionsHistory)) setSessionsHistory(parsed.sessionsHistory);
+        if (parsed.messages && Array.isArray(parsed.messages)) setMessages(parsed.messages);
+        if (parsed.pendingTickets && Array.isArray(parsed.pendingTickets)) setPendingTickets(parsed.pendingTickets);
+        if (parsed.settings) setSettings({ ...settings, ...parsed.settings });
+
+        // Generate success notification
+        setDbImportStatus({ 
+          message: `Restauration réussie ! ${parsed.products.length} articles, ${parsed.orders?.length || 0} ventes, et ${parsed.customers?.length || 0} clients ont été chargés.`, 
+          type: 'success' 
+        });
+
+        const restoreLog: AuditLogEntry = {
+          id: `LOG-RESTORE-${Date.now()}`,
+          timestamp: new Date().toISOString(),
+          user: currentUser.name,
+          action: 'DATABASE_RESTORE',
+          details: `Une restauration complète de la base de données a été effectuée avec succès depuis un fichier de sauvegarde par ${currentUser.name}.`,
+          severity: 'WARNING'
+        };
+        setAuditLogs([restoreLog, ...auditLogs]);
+
+        setTimeout(() => setDbImportStatus({ message: '', type: 'idle' }), 6000);
+      } catch (err: any) {
+        setDbImportStatus({ message: `Erreur de lecture : ${err.message || 'JSON non-conforme.'}`, type: 'error' });
+        setTimeout(() => setDbImportStatus({ message: '', type: 'idle' }), 5500);
+      }
+    };
+    reader.readAsText(file);
+    // Clear file query so standard resets work
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  // Safe wipe system with full validation
+  const executeValidatedPurge = () => {
+    if (purgePin !== currentUser.pin) {
+      setPurgeError('Code PIN de sécurité incorrect.');
+      return;
+    }
+    if (purgeInput.trim().toUpperCase() !== 'PURGER') {
+      setPurgeError('Veuillez saisir exactement le mot "PURGER" pour confirmer.');
+      return;
+    }
+
+    // Set collections to minimum required
+    setOrders([]);
+    setWholesaleOrders([]);
+    setCustomers([]);
+    setCashMovements([]);
+    setStockMovements([]);
+    setMessages([]);
+    setPendingTickets([]);
+    setCurrentSession(null);
+    setSessionsHistory([]);
+
+    const wipeLog: AuditLogEntry = {
+      id: `LOG-PURGE-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      user: currentUser.name,
+      action: 'DATABASE_PURGE',
+      details: `Purge complète sécurisée de la base effectuée par ${currentUser.name}. Toutes les ventes, les clients et les journaux financiers ont été réinitialisés.`,
+      severity: 'WARNING'
+    };
+    setAuditLogs([wipeLog]);
+
+    setDbImportStatus({ message: 'Toutes les données opérationnelles ont été purgées avec succès !', type: 'success' });
+    setShowPurgeModal(false);
+    setPurgeInput('');
+    setPurgePin('');
+    setPurgeError('');
+
+    setTimeout(() => setDbImportStatus({ message: '', type: 'idle' }), 5000);
+  };
   
   // Form State
   const [name, setName] = useState('');
@@ -201,18 +487,24 @@ export default function TeamManagement({ users, setUsers, currentUser, settings,
 
   // --- SETTINGS LOGIC ---
   const [localSettings, setLocalSettings] = useState<AppSettings>(settings);
+  const [isDirty, setIsDirty] = useState(false);
   const [saveFeedback, setSaveFeedback] = useState('');
 
   useEffect(() => {
-    setLocalSettings(settings);
-  }, [settings]);
+    if (!isDirty) {
+      setLocalSettings(settings);
+    }
+  }, [settings, isDirty]);
 
   const updateSettings = (updates: Partial<AppSettings>) => {
-    const newSettings = { ...localSettings, ...updates };
-    setLocalSettings(newSettings);
-    setSettings(newSettings);
-    // Removed isDirty toggle since it auto-saves now
-    setSaveFeedback('Paramètres mis à jour');
+    setLocalSettings(prev => ({ ...prev, ...updates }));
+    setIsDirty(true);
+  };
+
+  const handleSaveSettings = () => {
+    setSettings(localSettings);
+    setIsDirty(false);
+    setSaveFeedback('Modifications enregistrées avec succès');
     setTimeout(() => setSaveFeedback(''), 3000);
   };
 
@@ -262,23 +554,29 @@ export default function TeamManagement({ users, setUsers, currentUser, settings,
               </div>
               <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-[0.3em]">Gestion des accès, de la sécurité et des fenêtres de vente</p>
             </div>
-            <div className="flex border-2 border-black p-1">
+            <div className="flex border-2 border-black p-1 flex-wrap gap-1 md:gap-0">
                 <button 
                   onClick={() => setActiveTab('TEAM')}
-                  className={`px-6 py-2 text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'TEAM' ? 'bg-black text-white' : 'bg-transparent text-black'}`}
+                  className={`px-4 md:px-6 py-2 text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'TEAM' ? 'bg-black text-white' : 'bg-transparent text-black'}`}
                 >
                   Personnel
                 </button>
                 <button 
                   onClick={() => setActiveTab('SETTINGS')}
-                  className={`px-6 py-2 text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'SETTINGS' ? 'bg-black text-white' : 'bg-transparent text-black'}`}
+                  className={`px-4 md:px-6 py-2 text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'SETTINGS' ? 'bg-black text-white' : 'bg-transparent text-black'}`}
                 >
-                  Paramètres Système
+                  Paramètres
+                </button>
+                <button 
+                  onClick={() => setActiveTab('DATABASE')}
+                  className={`px-4 md:px-6 py-2 text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'DATABASE' ? 'bg-black text-white' : 'bg-transparent text-black'}`}
+                >
+                  B.D.D (Données)
                 </button>
              </div>
           </div>
 
-          {activeTab === 'TEAM' ? (
+          {activeTab === 'TEAM' && (
             <>
               <div className="flex justify-between items-center mb-10">
                 <h3 className="text-[11px] font-black uppercase tracking-[0.4em] text-neutral-400">Registre des employés</h3>
@@ -340,8 +638,18 @@ export default function TeamManagement({ users, setUsers, currentUser, settings,
                  ))}
               </div>
             </>
-          ) : (
+          )}
+
+          {activeTab === 'SETTINGS' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-12 animate-in slide-in-from-bottom-4 duration-300">
+               {isDirty && (
+                 <div className="col-span-1 md:col-span-2 bg-yellow-50 text-yellow-800 p-4 font-black uppercase tracking-widest text-[10px] text-center border-l-4 border-yellow-500 animate-in fade-in duration-300 flex items-center justify-between">
+                   <span>* Modifications non enregistrées</span>
+                   <button onClick={handleSaveSettings} className="bg-black text-white px-6 py-2 hover:bg-neutral-800 transition-colors">
+                     Enregistrer les modifications
+                   </button>
+                 </div>
+               )}
                {saveFeedback && (
                  <div className="col-span-1 md:col-span-2 bg-emerald-50 text-emerald-700 p-4 font-black uppercase tracking-widest text-[10px] text-center border-l-4 border-emerald-500 animate-in fade-in duration-300">
                    {saveFeedback}
@@ -548,6 +856,166 @@ export default function TeamManagement({ users, setUsers, currentUser, settings,
             </div>
           )}
 
+          {activeTab === 'DATABASE' && (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-in slide-in-from-bottom-4 duration-300">
+              {/* Metrology Panel */}
+              <div className="lg:col-span-1 space-y-8">
+                 <div className="bg-black text-white p-8 border-4 border-black relative overflow-hidden">
+                    <div className="absolute -bottom-8 -right-8 opacity-10">
+                       <Database className="w-48 h-48" />
+                    </div>
+                    <h4 className="text-xl font-black uppercase tracking-tighter mb-1 select-none">Métrologie B.D.D</h4>
+                    <p className="text-[9px] font-black text-neutral-400 uppercase tracking-widest mb-6">Volume physique et état d'indexation système</p>
+                    
+                    <div className="space-y-4 pt-4 border-t border-neutral-800">
+                       <div className="flex justify-between items-center text-xs">
+                          <span className="font-bold text-neutral-400 uppercase">Articles & Variantes</span>
+                          <span className="font-mono font-black">{products.reduce((acc, p) => acc + p.variants.length, 0)} ({products.length} réf)</span>
+                       </div>
+                       <div className="flex justify-between items-center text-xs">
+                          <span className="font-bold text-neutral-400 uppercase">Ventes Enregistrées</span>
+                          <span className="font-mono font-black">{orders.length} transactions</span>
+                       </div>
+                       <div className="flex justify-between items-center text-xs">
+                          <span className="font-bold text-neutral-400 uppercase">Clients (B2C)</span>
+                          <span className="font-mono font-black">{customers.length} fiches</span>
+                       </div>
+                       <div className="flex justify-between items-center text-xs">
+                          <span className="font-bold text-neutral-400 uppercase">Comptes Grossistes B2B</span>
+                          <span className="font-mono font-black">{wholesalers.length} profils</span>
+                       </div>
+                       <div className="flex justify-between items-center text-xs">
+                          <span className="font-bold text-neutral-400 uppercase">Journaux de Caisse</span>
+                          <span className="font-mono font-black">{cashMovements.length} lignes</span>
+                       </div>
+                       <div className="flex justify-between items-center text-xs">
+                          <span className="font-bold text-neutral-400 uppercase">Audit & Logs</span>
+                          <span className="font-mono font-black text-amber-400">{auditLogs.length} événements</span>
+                       </div>
+                    </div>
+
+                    <div className="mt-8 pt-6 border-t border-neutral-800">
+                       <div className="p-4 bg-neutral-900 border border-neutral-800 rounded-sm">
+                          <p className="text-[8px] font-black text-neutral-500 uppercase tracking-widest mb-1.5">Espace Cache Estimé (localStorage)</p>
+                          <div className="flex items-center gap-4">
+                             <div className="h-2 flex-grow bg-neutral-800 rounded-full overflow-hidden">
+                                <div 
+                                  className="h-full bg-emerald-400 transition-all duration-1050" 
+                                  style={{ width: `${Math.min(105, Math.ceil((JSON.stringify(localStorage).length / (5 * 1024 * 1024)) * 100))}%` }}
+                                ></div>
+                             </div>
+                             <span className="text-[10px] font-mono font-black">
+                                {Math.ceil((JSON.stringify(localStorage).length / 1024))} KB / 5 MB
+                             </span>
+                          </div>
+                       </div>
+                    </div>
+                 </div>
+
+                 <div className="p-6 border border-neutral-200 bg-neutral-50 rounded-sm">
+                    <p className="text-[9px] font-black uppercase text-neutral-400 tracking-widest mb-1">Architecture du Système</p>
+                    <p className="text-[10px] text-neutral-500 tracking-tight leading-relaxed">
+                       Toute la data est sérialisée et est stockée localement. Effectuez régulièrement des exportations cryptographiques JSON de maintenance pour prévenir les pannes matérielles.
+                    </p>
+                 </div>
+              </div>
+
+              {/* Maintenance Actions */}
+              <div className="lg:col-span-2 space-y-8">
+                 {dbImportStatus.message && (
+                    <div className={`p-5 font-black uppercase tracking-widest text-[10px] border-l-4 rounded-sm animate-in fade-in duration-300 ${
+                       dbImportStatus.type === 'success' ? 'bg-emerald-50 text-emerald-800 border-emerald-500' : 'bg-red-50 text-red-800 border-red-500'
+                    }`}>
+                       {dbImportStatus.message}
+                    </div>
+                 )}
+
+                 {/* Snapshot Maintenance */}
+                 <div className="p-8 border border-neutral-150 bg-white shadow-sm space-y-6">
+                    <div>
+                       <h4 className="text-lg font-black uppercase tracking-tighter">Maintenance Globale</h4>
+                       <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Sauvegardes intégrales et injections de snapshots système</p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4">
+                       <div className="p-6 border border-neutral-100 bg-neutral-50/50 flex flex-col justify-between rounded-sm">
+                          <div>
+                             <FolderDown className="w-8 h-8 text-neutral-900 mb-4" />
+                             <h5 className="text-xs font-black uppercase tracking-widest mb-2">Export Intégral du Système</h5>
+                             <p className="text-[10px] text-neutral-400 uppercase font-bold leading-relaxed mb-6">Télécharger une sauvegarde complète au format .json pour figer l'état actuel de votre stock et comptabilité.</p>
+                          </div>
+                          <button 
+                            onClick={onDownloadBackup}
+                            className="w-full py-4 bg-black text-white text-[10px] font-black uppercase tracking-widest hover:bg-neutral-800 transition-all flex items-center justify-center gap-2"
+                          >
+                             <FileSpreadsheet className="w-4 h-4" /> Exporter en Fichier .json
+                          </button>
+                       </div>
+
+                       <div className="p-6 border border-neutral-100 bg-neutral-50/50 flex flex-col justify-between rounded-sm">
+                          <div>
+                             <Upload className="w-8 h-8 text-neutral-900 mb-4" />
+                             <h5 className="text-xs font-black uppercase tracking-widest mb-2">Restauration Système</h5>
+                             <p className="text-[10px] text-neutral-400 uppercase font-bold leading-relaxed mb-6">Charger et injecter un fichier de sauvegarde (.json). Cette action remplace l'état actuel du système.</p>
+                          </div>
+                          <input 
+                            type="file" 
+                            ref={fileInputRef}
+                            onChange={handleRestoreBackup}
+                            accept=".json"
+                            className="hidden" 
+                          />
+                          <button 
+                            onClick={() => fileInputRef.current?.click()}
+                            className="w-full py-4 border-2 border-dashed border-black hover:bg-neutral-50 text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2"
+                          >
+                             <Terminal className="w-4 h-4" /> Charger un Snapshot (.json)
+                          </button>
+                       </div>
+                    </div>
+                 </div>
+
+                 {/* Advanced Seeding / Purging */}
+                 <div className="p-8 border border-neutral-150 bg-white shadow-sm space-y-6">
+                    <div>
+                       <h4 className="text-lg font-black uppercase tracking-tighter text-neutral-900">Options Avancées d'Ingénierie</h4>
+                       <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Injection de jeux d'essai haute fidélité Zara & purges sécurisées d'activité</p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4">
+                       <div className="p-6 border border-amber-200/50 bg-amber-50/10 flex flex-col justify-between rounded-sm">
+                          <div>
+                             <Layers className="w-8 h-8 text-amber-500 mb-4" />
+                             <h5 className="text-xs font-black uppercase tracking-widest text-neutral-850 mb-2">Pre-seed de Démo Zara</h5>
+                             <p className="text-[10px] text-neutral-400 uppercase font-bold leading-relaxed mb-6">Remplacer vos articles actuels par une collection complète Zara (vestes tailleurs, chemises, trenchs avec codes barres et variantes).</p>
+                          </div>
+                          <button 
+                            onClick={handleSeedDemoData}
+                            className="w-full py-4 bg-amber-500 hover:bg-amber-600 text-white text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2"
+                          >
+                             <RefreshCw className="w-4 h-4" /> Injecter le Catalogue d'Essai
+                          </button>
+                       </div>
+
+                       <div className="p-6 border border-red-100 bg-red-50/10 flex flex-col justify-between rounded-sm">
+                          <div>
+                             <AlertTriangle className="w-8 h-8 text-red-600 mb-4" />
+                             <h5 className="text-xs font-black uppercase tracking-widest text-red-600 mb-2">Purge Totale des Ventes</h5>
+                             <p className="text-[10px] text-neutral-400 uppercase font-bold leading-relaxed mb-6">Réinitialiser de manière sécurisée les journaux de ventes, comptes et crédits, tout en conservant vos articles.</p>
+                          </div>
+                          <button 
+                            onClick={() => setShowPurgeModal(true)}
+                            className="w-full py-4 bg-red-600 hover:bg-red-700 text-white text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2"
+                          >
+                             <Trash2 className="w-4 h-4" /> Purger les Données d'Activité
+                          </button>
+                       </div>
+                    </div>
+                 </div>
+              </div>
+            </div>
+          )}
+
        {/* Secure Reset Modals */}
        {resetStep > 0 && (
          <div className="fixed inset-0 bg-neutral-900/90 z-[300] flex items-center justify-center p-4 backdrop-blur-md">
@@ -598,6 +1066,64 @@ export default function TeamManagement({ users, setUsers, currentUser, settings,
                     </div>
                  </div>
                )}
+            </div>
+         </div>
+       )}
+
+       {/* Secure Database Purge Modal */}
+       {showPurgeModal && (
+         <div className="fixed inset-0 bg-neutral-900/95 z-[300] flex items-center justify-center p-4 backdrop-blur-md animate-in fade-in duration-200">
+            <div className="bg-white max-w-sm w-full p-8 border-4 border-red-600 animate-in zoom-in duration-150 shadow-2xl">
+               <div className="text-center">
+                  <AlertTriangle className="w-12 h-12 text-red-600 mx-auto mb-4 animate-bounce" />
+                  <h3 className="text-xl font-black uppercase tracking-tighter text-red-600 mb-2">Purge Sécurisée</h3>
+                  <p className="text-[10px] font-bold text-neutral-450 uppercase tracking-widest leading-relaxed mb-6">
+                     Cette action supprimera toutes les ventes, clients, comptes de gros, sessions de caisse, et videra les historiques de l'application. Le catalogue de vêtements ne sera PAS modifié.
+                  </p>
+
+                  <div className="space-y-4 text-left mb-6">
+                     <div>
+                        <label className="text-[8px] font-black text-neutral-400 uppercase tracking-widest block mb-1.5">Tapez "PURGER" pour confirmer</label>
+                        <input 
+                          type="text"
+                          value={purgeInput}
+                          onChange={e => { setPurgeInput(e.target.value); setPurgeError(''); }}
+                          placeholder="PURGER"
+                          className="w-full bg-neutral-100 p-3 text-xs font-black uppercase tracking-widest outline-none border border-neutral-300 text-center"
+                        />
+                     </div>
+                     <div>
+                        <label className="text-[8px] font-black text-neutral-400 uppercase tracking-widest block mb-1.5 font-bold">Saisissez votre code PIN administrateur</label>
+                        <input 
+                          type="password"
+                          maxLength={4}
+                          value={purgePin}
+                          onChange={e => { setPurgePin(e.target.value); setPurgeError(''); }}
+                          placeholder="****"
+                          className="w-full bg-neutral-100 p-3 text-sm font-black tracking-widest outline-none border border-neutral-300 text-center"
+                        />
+                     </div>
+                  </div>
+
+                  {purgeError && (
+                     <p className="text-red-600 text-[10px] font-black uppercase mb-4 text-center">{purgeError}</p>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-4">
+                     <button 
+                       onClick={() => { setShowPurgeModal(false); setPurgeInput(''); setPurgePin(''); setPurgeError(''); }} 
+                       className="py-3 border border-neutral-300 text-[10px] font-black uppercase tracking-widest text-neutral-600 hover:bg-neutral-100 transition-colors"
+                     >
+                        Annuler
+                     </button>
+                     <button 
+                       onClick={executeValidatedPurge} 
+                       className="py-3 bg-red-600 text-white text-[10px] font-black uppercase tracking-widest hover:bg-red-700 transition-colors shadow-lg"
+                     >
+                        Confirmer Purge
+                     </button>
+                  </div>
+               </div>
             </div>
          </div>
        )}

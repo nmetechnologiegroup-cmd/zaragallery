@@ -24,7 +24,7 @@ Grâce à notre configuration préparée, l'intégralité du système (le serveu
 
 ## 1. ARCHITECTURE GLOBALE
 L’application fonctionne de manière isolée et sécurisée grâce à trois modules communicants :
-* **Le Serveur POS (Zara App) :** Fait tourner l'interface de caisse et l'API de vente (Exposé sur le port `8000` via docker-compose car le 3000 est occupé).
+* **Le Serveur POS (Zara App) :** Fait tourner l'interface de caisse et l'API de vente (Exposé sur le port `6000` ou `7000` via docker-compose car le 3000 est occupé).
 * **La Base de données (MariaDB) :** Enregistre de manière ultra-sécurisée les ventes, articles, clients et sessions (Port `3306`), avec le nouveau système de partitionnement automatique.
 * **phpMyAdmin :** Une interface Web visuelle pour regarder et modifier la base de données en toute simplicité (Port `8080`).
 
@@ -96,25 +96,17 @@ Exécutez ce script officiel sécurisé pour installer Docker d'une seule traite
 
 ---
 
-## ÉTAPE 4 : CONNEXION À VOTRE DÉPÔT GITHUB ET TRANSFERT DU CODE
-Pour faire fonctionner l'application, vous devez récupérer le code publié sur votre GitHub.
+## ÉTAPE 4 : TRANSFERT DES FICHIERS DE L'APPLICATION SUR LE SERVEUR
+Pour faire fonctionner le POS sur votre Debian 12, vous devez y copier le code source de l'application.
 
-1. **Installer Git s'il n'est pas déjà présent :**
-   ```bash
-   sudo apt install -y git
-   ```
-
-2. **Cloner le projet depuis GitHub vers votre serveur Debian :**
-   Placez-vous dans votre répertoire personnel et clonez le dossier. Remplacez `<votre_lien_github>` par l'URL HTTPs ou SSH de votre dépôt.
-   ```bash
-   cd /home/$USER/
-   git clone <votre_lien_github> zara-pos
-   ```
-
-3. **Se déplacer dans le dossier du projet en vue du déploiement :**
-   ```bash
-   cd zara-pos
-   ```
+* **Méthode A (Facile par Clé USB ou SFTP) :**
+  Utilisez un logiciel gratuit comme **FileZilla** ou **WinSCP** pour glisser-déposer tous les dossiers de ce projet dans un répertoire sur votre serveur Debian (par exemple, créez un dossier `/home/votre_nom/zara-pos`).
+* **Méthode B (Via Git si vous utilisez un dépôt privé) :**
+  ```bash
+  cd /home/votre_nom/
+  git clone <lien_de_votre_depot> zara-pos
+  cd zara-pos
+  ```
 
 ---
 
@@ -185,9 +177,9 @@ sudo docker exec -t zara_mariadb mysqldump -u root -p"zara_password" zara_db > m
 Pour pouvoir ouvrir l'écran de caisse depuis d'autres appareils connectés en magasin (ex: tablettes d'iPad/Android des vendeurs, autres ordinateurs, téléphones portables de l'équipe) :
 
 1. **Autoriser l'accès à travers le pare-feu Debian :**
-   Si vous avez activé un pare-feu sur Debian (comme `ufw`), vous devez autoriser le port de votre application (8000) et éventuellement phpMyAdmin (8080) :
+   Si vous avez activé un pare-feu sur Debian (comme `ufw`), vous devez autoriser le port de votre application (6000) et éventuellement phpMyAdmin (8080) :
    ```bash
-   sudo ufw allow 8000/tcp
+   sudo ufw allow 6000/tcp
    sudo ufw allow 8080/tcp
    sudo ufw reload
    ```
@@ -203,28 +195,19 @@ Pour pouvoir ouvrir l'écran de caisse depuis d'autres appareils connectés en m
    Connectez l'iPad, la tablette ou l'ordinateur portable du magasin sur **le même Wi-Fi** que votre serveur Debian.
    Ouvrez un navigateur (Google chrome, Safari) et tapez :
    ```text
-   http://192.168.1.50:8000/
+   http://192.168.1.50:6000/
    ```
    *(En remplaçant `192.168.1.50` par l'IP affichée à l'étape précédente)*. L'interface s'affichera instantanément !
-
----
-
-## 9. METTRE A JOUR DEPUIS GITHUB (MISE A JOUR CONTINUE)
-Lorsqu'une modification est faite pour le logiciel de manière centralisée et poussée sur votre répertoire GitHub, voici comment mettre à jour le serveur Debian de manière transparente :
-1. Accédez à votre serveur et allez dans le dossier : `cd /home/$USER/zara-pos`
-2. Téléchargez les tout derniers changements : `git pull origin main` (ou `master`)
-3. Demandez à Docker de reconstruire le programme sans couper la base de données : `sudo docker compose build --no-cache zara_app`
-4. Redémarrez de manière logicielle (sans interruption brutale) l'interface caisse : `sudo docker compose up -d`
 
 ---
 
 ## ÉTAPE 8 : GUIDE GÉNERAL D'IMPRESSION DE REÇUS
 L'application intègre un utilitaire d'impression propre pour formater n'importe quel ticket.
 
-2. **Impression Directe en plein écran (Recommandée) :**
+1. **Impression Directe en plein écran (Recommandée) :**
    À cause des restrictions de sécurité intégrées par les éditeurs de cloud (les bacs à sable "Sandbox"), l'impression directe ne fonctionne pas bien à l'intérieur d'un "aperçu" intégré. 
-   **C'est normal !** Une fois l'application ouverte dans son propre onglet ou sur votre serveur Debian (ex: http://localhost:8000), le bouton **Imprimer** lancera immédiatement la fenêtre d'impression native de l'OS avec un formatage idéal pour ticket de caisse de boutique.
-3. **Configuration Système de l’imprimante thermique (80mm) :**
+   **C'est normal !** Une fois l'application ouverte dans son propre onglet ou sur votre serveur Debian (ex: htp://localhost:6000), le bouton **Imprimer** lancera immédiatement la fenêtre d'impression native de l'OS avec un formatage idéal pour ticket de caisse de boutique.
+2. **Configuration Système de l’imprimante thermique (80mm) :**
    * Connectez votre imprimante sur la caisse active.
    * Lorsque l'aperçu avant impression s'ouvre :
      * Définissez la **Destination** sur votre imprimante thermique (Xprinter, Epson, etc.).
@@ -234,10 +217,10 @@ L'application intègre un utilitaire d'impression propre pour formater n'importe
 
 ---
 
-## 11. AIDE AUX ERREURS FRÉQUENTES (DÉPANNAGE DÉBUTANT)
+## 10. AIDE AUX ERREURS FRÉQUENTES (DÉPANNAGE DÉBUTANT)
 
-### "Erreur : Port 8000 déjà utilisé"
-Si un autre programme utilise le port 8000 sur votre Debian 12, ouvrez le fichier `docker-compose.yml` et remplacez `"8000:3000"` par un autre port (ex: `"8080:3000"` ou `"9000:3000"`). Relancez l'application via les étapes de mise à jour.
+### "Erreur : Port 6000 déjà utilisé"
+Si un autre programme utilise le port 6000 sur votre Debian 12, ouvrez le fichier `docker-compose.yml` et remplacez `"6000:3000"` par `"7000:3000"`. Relancez l'application.
 
 ### "Comment voir si mes conteneurs fonctionnent correctement ?"
 ```bash

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Product, ProductVariant, CartItem, Order, PendingTicket, User, Promotion, Customer, AuditLogEntry, PaymentItem, getVipStatus, CashRegisterSession, AppSettings, getPaymentMethodLabel } from '../types';
 import { printElement } from '../utils/print-helper';
+import { decodeAzertyBarcode, autoDecodeBarcodeIfMangled } from '../utils/barcodeHelper';
 import { CATEGORIES } from '../data';
 import { Search, Trash2, Plus, Minus, CreditCard, Banknote, X, ShoppingCart, Tag, Smartphone, Clock, ShieldAlert, Printer, UserCircle, Package, Shirt, Baby, Footprints, Watch, ShoppingBag, UserPlus, Star, Edit3, CheckCircle2, Lock as LockIcon, LogOut, Store } from 'lucide-react';
 
@@ -238,6 +239,18 @@ export default function POS({
   const [editReason, setEditReason] = useState('');
   const [payments, setPayments] = useState<PaymentItem[]>([{ method: 'CASH', amount: 0 }]);
   const [consultMode, setConsultMode] = useState(false);
+  const [scannerNotification, setScannerNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const notificationTimeoutRef = useRef<any>(null);
+
+  const showNotification = (message: string, type: 'success' | 'error' = 'error') => {
+    if (notificationTimeoutRef.current) {
+      clearTimeout(notificationTimeoutRef.current);
+    }
+    setScannerNotification({ message, type });
+    notificationTimeoutRef.current = setTimeout(() => {
+      setScannerNotification(null);
+    }, 4000);
+  };
 
   const activePromotion = promotions.find(p => p.isActive);
 
@@ -272,10 +285,11 @@ export default function POS({
       if (e.key === 'Enter') {
         if (rawBarcode.trim().length >= 4) {
           const barcodeValue = rawBarcode.trim();
+          const decodedValue = decodeAzertyBarcode(barcodeValue);
           // Look for variant with this barcode
-          const matchedProduct = products.find(p => p.variants.some(v => v.barcode === barcodeValue));
+          const matchedProduct = products.find(p => p.variants.some(v => v.barcode === barcodeValue || v.barcode === decodedValue));
           if (matchedProduct) {
-            const matchedVariant = matchedProduct.variants.find(v => v.barcode === barcodeValue);
+            const matchedVariant = matchedProduct.variants.find(v => v.barcode === barcodeValue || v.barcode === decodedValue);
             if (matchedVariant) {
                // Add it to the cart
                setCart(prev => {
@@ -286,7 +300,11 @@ export default function POS({
                  return [...prev, { id: Date.now().toString(), product: matchedProduct, variant: matchedVariant, quantity: 1, discount: 0 }];
                });
                addAuditLog('SCANNER_CODE_BARRE', `Article scanné par lecteur de code-barres : ${matchedProduct.name} (Taille : ${matchedVariant.size})`);
+               showNotification(`Article Scanné : ${matchedProduct.name} (${matchedVariant.size} - ${matchedVariant.color})`, 'success');
             }
+          } else {
+             addAuditLog('SCANNER_INCONNU', `Code-barres inconnu : "${barcodeValue}" (Décodé : "${decodedValue}")`, 'WARNING');
+             showNotification(`Code-barres inconnu : "${barcodeValue}" (ou "${decodedValue}")`, 'error');
           }
           rawBarcode = '';
         }
@@ -308,9 +326,13 @@ export default function POS({
   const filteredProducts = products.filter(p => {
     const matchesCat = category === 'Tous' || p.category === category;
     const s = search.toLowerCase();
-    const matchesName = p.name.toLowerCase().includes(s);
-    const matchesSub = p.subCategory?.toLowerCase().includes(s);
-    const matchesBarcode = p.variants.some(v => v.barcode?.toLowerCase().includes(s));
+    const decodedS = decodeAzertyBarcode(s);
+    const matchesName = p.name.toLowerCase().includes(s) || p.name.toLowerCase().includes(decodedS);
+    const matchesSub = p.subCategory?.toLowerCase().includes(s) || p.subCategory?.toLowerCase().includes(decodedS);
+    const matchesBarcode = p.variants.some(v => 
+      v.barcode?.toLowerCase().includes(s) || 
+      v.barcode?.toLowerCase().includes(decodedS)
+    );
     
     return matchesCat && (matchesName || matchesSub || matchesBarcode);
   });
@@ -531,6 +553,21 @@ export default function POS({
 
   return (
     <>
+      {/* Floating Scanner Notification Overlay */}
+      {scannerNotification && (
+        <div className={`fixed top-6 left-1/2 -translate-x-1/2 z-[9999] px-6 py-4 flex items-center gap-3 border shadow-2xl animate-in fade-in slide-in-from-top-4 duration-300 ${
+          scannerNotification.type === 'error' 
+            ? 'bg-red-950 text-red-100 border-red-500' 
+            : 'bg-emerald-950 text-emerald-100 border-emerald-500'
+        }`}>
+          <ShieldAlert className={`w-5 h-5 shrink-0 ${scannerNotification.type === 'error' ? 'text-red-400' : 'text-emerald-400'}`} />
+          <span className="text-[11px] font-black uppercase tracking-wider">{scannerNotification.message}</span>
+          <button onClick={() => setScannerNotification(null)} className="ml-4 text-white hover:text-white/70 transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       <div className="flex flex-col lg:flex-row h-full w-full print:hidden overflow-hidden bg-neutral-50">
       {/* Search & Categories */}
       <div className="flex-1 flex flex-col h-full bg-white border-r border-neutral-100">
@@ -570,7 +607,34 @@ export default function POS({
               type="text" 
               placeholder="RECHERCHER OU SCANNER DIRECTEMENT UN ARTICLE..." 
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => setSearch(autoDecodeBarcodeIfMangled(e.target.value))}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  const term = search.trim();
+                  if (term.length >= 3) {
+                    const decoded = decodeAzertyBarcode(term);
+                    const matchedProduct = products.find(p => p.variants.some(v => v.barcode === term || v.barcode === decoded));
+                    if (matchedProduct) {
+                      const matchedVariant = matchedProduct.variants.find(v => v.barcode === term || v.barcode === decoded);
+                      if (matchedVariant) {
+                        setCart(prev => {
+                          const existing = prev.find(item => item.variant.id === matchedVariant.id);
+                          if (existing) {
+                            return prev.map(item => item.variant.id === matchedVariant.id ? { ...item, quantity: item.quantity + 1 } : item);
+                          }
+                          return [...prev, { id: Date.now().toString(), product: matchedProduct, variant: matchedVariant, quantity: 1, discount: 0 }];
+                        });
+                        addAuditLog('SCAN_MANUEL', `Article ajouté par recherche directe : ${matchedProduct.name} (${matchedVariant.size})`);
+                        showNotification(`Article Ajouté : ${matchedProduct.name} (${matchedVariant.size})`, 'success');
+                        setSearch('');
+                      }
+                    } else {
+                      // Show a definitive error notification for code-barres
+                      showNotification(`Aucun article trouvé avec le code-barres : "${term}"`, 'error');
+                    }
+                  }
+                }
+              }}
               className="w-full pl-12 pr-4 py-3.5 bg-neutral-50/60 border border-neutral-200/80 text-xs font-bold uppercase tracking-widest outline-none focus:border-black focus:bg-white transition-all rounded-none"
             />
             

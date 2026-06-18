@@ -12,7 +12,7 @@ const DATA_FILE = path.join(__dirname, 'zara_database.json');
 
 async function startServer() {
   const app = express();
-  const PORT = process.env.PORT || 3000;
+  const PORT = parseInt(process.env.PORT || '3000', 10);
 
   app.use(express.json({ limit: '50mb' }));
 
@@ -198,13 +198,26 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log('----------------------------------------------------');
-    console.log('ZARA GALLERIE - SERVEUR LOCAL ACTIVÉ');
-    console.log(`Accès local : http://localhost:${PORT}`);
-    console.log(`Accès Boutique (Wi-Fi) : http://[VOTRE-IP]:${PORT}`);
-    console.log('----------------------------------------------------');
-  });
+  const listenWithFallback = (portToTry: number) => {
+    const serverInstance = app.listen(portToTry, '0.0.0.0', () => {
+      console.log('----------------------------------------------------');
+      console.log(`ZARA GALLERIE - SERVEUR LOCAL ACTIVÉ`);
+      console.log(`Accès local : http://localhost:${portToTry}`);
+      console.log(`Accès Boutique (Wi-Fi) : http://[VOTRE-IP]:${portToTry}`);
+      console.log('----------------------------------------------------');
+    });
+
+    serverInstance.on('error', (err: any) => {
+      if (err.code === 'EADDRINUSE' && portToTry === PORT && PORT !== 6000) {
+        console.warn(`⚠️ Le port ${portToTry} est déjà occupé. Tentative de repli automatique sur le port 6000...`);
+        listenWithFallback(6000);
+      } else {
+        console.error('❌ Erreur de démarrage du serveur :', err);
+      }
+    });
+  };
+
+  listenWithFallback(PORT);
 }
 
 startServer();

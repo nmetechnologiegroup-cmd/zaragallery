@@ -4,6 +4,7 @@ import { Product, ProductVariant, ProductMovement } from '../types';
 import { Plus, Edit2, Trash2, Package, Search, ChevronDown, Filter, MoreVertical, X, Shirt, Baby, Footprints, Watch, ShoppingBag, History as HistoryIcon, Barcode as BarcodeIcon, ShieldAlert, Boxes, Truck, Image as ImageIcon, Download } from 'lucide-react';
 import { CATEGORIES } from '../data';
 import { uploadImage } from '../utils/fileHelper';
+import { decodeAzertyBarcode, isMangledAzertyBarcode, autoDecodeBarcodeIfMangled } from '../utils/barcodeHelper';
 
 interface InventoryProps {
   products: Product[];
@@ -132,7 +133,13 @@ export default function Inventory({ products, setProducts, movements, trackMovem
   };
 
   const updateVariant = (id: string, field: keyof ProductVariant, value: string | number) => {
-    setNewVariants(newVariants.map(v => v.id === id ? { ...v, [field]: value } : v));
+    let finalValue = value;
+    if (field === 'barcode' && typeof value === 'string') {
+      if (isMangledAzertyBarcode(value)) {
+        finalValue = decodeAzertyBarcode(value);
+      }
+    }
+    setNewVariants(newVariants.map(v => v.id === id ? { ...v, [field]: finalValue } : v));
   };
 
   const handleAddProduct = (e: React.FormEvent) => {
@@ -240,9 +247,15 @@ export default function Inventory({ products, setProducts, movements, trackMovem
 
   const filteredProducts = products.filter(p => {
     const matchesCat = selectedCat === 'Tous' || p.category === selectedCat;
-    const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase()) || 
-                          p.subCategory?.toLowerCase().includes(search.toLowerCase());
-    return matchesCat && matchesSearch;
+    const s = search.toLowerCase();
+    const decodedS = decodeAzertyBarcode(s);
+    const matchesName = p.name.toLowerCase().includes(s) || p.name.toLowerCase().includes(decodedS);
+    const matchesSub = p.subCategory?.toLowerCase().includes(s) || p.subCategory?.toLowerCase().includes(decodedS);
+    const matchesBarcode = p.variants.some(v => 
+      v.barcode?.toLowerCase().includes(s) || 
+      v.barcode?.toLowerCase().includes(decodedS)
+    );
+    return matchesCat && (matchesName || matchesSub || matchesBarcode);
   });
 
   const isLowStock = (product: Product) => {
@@ -332,9 +345,14 @@ export default function Inventory({ products, setProducts, movements, trackMovem
                             data.forEach((row: any) => {
                               // Adaptation base on standard Zara export/import Excel forms
                               const existingProduct = products.find(p => p.name === (row.Nom || row.Name));
+                              
+                              const rawBarcode = String(row.CodeBarre || row.Barcode || '');
+                              const decodedBarcode = isMangledAzertyBarcode(rawBarcode) ? decodeAzertyBarcode(rawBarcode) : rawBarcode;
+                              const finalBarcode = decodedBarcode || `ZARA-${Math.floor(100000 + Math.random() * 900000)}`;
+
                               if (existingProduct) {
                                 // If the product exists, try adding a variant instead
-                                const variantExists = existingProduct.variants.find(v => v.barcode === (row.CodeBarre || row.Barcode));
+                                const variantExists = existingProduct.variants.find(v => v.barcode === rawBarcode || v.barcode === decodedBarcode);
                                 if (variantExists) {
                                   variantExists.stock += parseInt(row.Stock || 0);
                                   trackMovement(existingProduct.id, variantExists.id, 'RESTOCK', parseInt(row.Stock || 0), 'Import Excel (Update)');
@@ -344,7 +362,7 @@ export default function Inventory({ products, setProducts, movements, trackMovem
                                     size: row.Taille || row.Size || 'Unique',
                                     color: row.Couleur || row.Color || 'Standard',
                                     stock: parseInt(row.Stock || 0),
-                                    barcode: row.CodeBarre || row.Barcode || `ZARA-${Math.floor(100000 + Math.random() * 900000)}`
+                                    barcode: finalBarcode
                                   });
                                 }
                               } else {
@@ -360,7 +378,7 @@ export default function Inventory({ products, setProducts, movements, trackMovem
                                     size: row.Taille || row.Size || 'Unique',
                                     color: row.Couleur || row.Color || 'Standard',
                                     stock: parseInt(row.Stock || 0),
-                                    barcode: row.CodeBarre || row.Barcode || `ZARA-${Math.floor(100000 + Math.random() * 900000)}`
+                                    barcode: finalBarcode
                                   }]
                                 };
                                 trackMovement(newProd.id, newProd.variants[0].id, 'RESTOCK', parseInt(row.Stock || 0), 'Import Excel (New)');
@@ -410,7 +428,7 @@ export default function Inventory({ products, setProducts, movements, trackMovem
                   type="text" 
                   placeholder="Rechercher article..." 
                   value={search}
-                  onChange={(e) => setSearch(e.target.value)}
+                  onChange={(e) => setSearch(autoDecodeBarcodeIfMangled(e.target.value))}
                   className="w-full pl-12 pr-4 py-3 bg-neutral-50 border border-neutral-100 text-xs font-bold focus:bg-white focus:border-black outline-none transition-all uppercase tracking-widest"
                 />
               </div>

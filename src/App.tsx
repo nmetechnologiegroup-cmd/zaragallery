@@ -535,6 +535,32 @@ export default function App() {
             settings={settings} 
             setSettings={setSettingsFromTeam} 
             onDownloadBackup={downloadDatabase}
+            products={products}
+            setProducts={setProducts}
+            orders={orders}
+            setOrders={setOrders}
+            customers={customers}
+            setCustomers={setCustomers}
+            promotions={promotions}
+            setPromotions={setPromotions}
+            cashMovements={cashMovements}
+            setCashMovements={setCashMovements}
+            auditLogs={auditLogs}
+            setAuditLogs={setAuditLogs}
+            stockMovements={stockMovements}
+            setStockMovements={setStockMovements}
+            wholesalers={wholesalers}
+            setWholesalers={setWholesalers}
+            wholesaleOrders={wholesaleOrders}
+            setWholesaleOrders={setWholesaleOrders}
+            currentSession={currentSession}
+            setCurrentSession={setCurrentSession}
+            sessionsHistory={sessionsHistory}
+            setSessionsHistory={setSessionsHistory}
+            messages={messages}
+            setMessages={setMessages}
+            pendingTickets={pendingTickets}
+            setPendingTickets={setPendingTickets}
           />
         )}
         {activeTab === 'crm' && hasAppAccess('canViewCRM', isManager) && <CRM customers={customers} setCustomers={setCustomersFromCRM} orders={orders} settings={settings} />}
