@@ -512,11 +512,11 @@ export default function POS({
   };
 
   const handlePrintReceiptA4 = () => {
-    printElement('receipt-content', 'Reçu Galerie ZARA', 'A4');
+    printElement('receipt-content', 'Reçu ZARA GALLERY', 'A4');
   };
 
   const handlePrintReceipt58 = () => {
-    printElement('receipt-content', 'Reçu Galerie ZARA', '58mm');
+    printElement('receipt-content', 'Reçu ZARA GALLERY', '58mm');
   };
 
   const updatePaymentAmount = (index: number, amount: number) => {

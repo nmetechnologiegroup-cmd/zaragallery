@@ -1,4 +1,4 @@
-# Dossier Public pour les Images et Assets de Zara Gallerie
+# Dossier Public pour les Images et Assets de Zara Gallery
 
 Déposez vos images dans ce dossier `/public`. Elles seront accessibles directement à la racine de l'application et par les navigateurs :
 

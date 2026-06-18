@@ -277,7 +277,7 @@ async function startServer() {
   const listenWithFallback = (portToTry: number) => {
     const serverInstance = app.listen(portToTry, '0.0.0.0', () => {
       console.log('----------------------------------------------------');
-      console.log(`ZARA GALLERIE - SERVEUR LOCAL ACTIVÉ`);
+      console.log(`ZARA GALLERY - SERVEUR LOCAL ACTIVÉ`);
       console.log(`Accès local : http://localhost:${portToTry}`);
       console.log(`Accès Boutique (Wi-Fi) : http://[VOTRE-IP]:${portToTry}`);
       console.log('----------------------------------------------------');

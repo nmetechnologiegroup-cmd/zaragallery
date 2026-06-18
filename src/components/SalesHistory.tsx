@@ -234,11 +234,11 @@ export default function SalesHistory({ orders, wholesaleOrders = [], wholesalers
   };
 
   const confirmPrintA4 = () => {
-    printElement('receipt-content-history', 'Reçu Galerie ZARA', 'A4');
+    printElement('receipt-content-history', 'Reçu ZARA GALLERY', 'A4');
   };
 
   const confirmPrint58 = () => {
-    printElement('receipt-content-history', 'Reçu Galerie ZARA', '58mm');
+    printElement('receipt-content-history', 'Reçu ZARA GALLERY', '58mm');
   };
 
   const handleExportCSV = () => {
