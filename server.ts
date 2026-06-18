@@ -5,10 +5,10 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import mysql from 'mysql2/promise';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const currentFilename = typeof __filename !== 'undefined' ? __filename : fileURLToPath(import.meta.url);
+const currentDirname = typeof __dirname !== 'undefined' ? __dirname : path.dirname(currentFilename);
 
-const DATA_FILE = path.join(__dirname, 'zara_database.json');
+const DATA_FILE = path.join(currentDirname, 'zara_database.json');
 
 async function startServer() {
   const app = express();
@@ -63,7 +63,7 @@ async function startServer() {
   // --- API ROUTES ---
 
   // Create uploads directory if it doesn't exist
-  const uploadsDir = path.join(__dirname, 'uploads');
+  const uploadsDir = path.join(currentDirname, 'uploads');
   try {
     await fs.mkdir(uploadsDir, { recursive: true });
   } catch (err) {
@@ -191,7 +191,7 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(__dirname, 'dist');
+    const distPath = path.join(currentDirname, 'dist');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
