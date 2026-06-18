@@ -38,10 +38,11 @@ apt update && apt upgrade -y
 apt install -y curl git ufw build-essential
 ```
 
-Saisissez les règles initiales de pare-feu UFW pour protéger l'OS :
+Saisissez les règles initiales de pare-feu UFW pour protéger l'OS et ouvrir le port de secours 6000 de Nginx :
 ```bash
 ufw allow OpenSSH
 ufw allow 'Nginx Full'
+ufw allow 6000/tcp
 ufw --force enable
 ```
 
@@ -140,7 +141,7 @@ pm2 logs "zara-gallery-pos"
 
 ## Étape 5 : Configuration Reverse Proxy Nginx
 
-Nginx écoutera sur le port standard HTTP `80` (et HTTPS `443` par la suite) et transmettra les requêtes de manière ultra-rapide vers l'application s'exécutant sur le port interne `3000`.
+Si le port standard **80** est déjà occupé sur votre serveur Debian par un autre service (ex: Apache ou un autre site), nous configurons Nginx pour écouter sur le port **6000**. Tout le trafic sera retransmis de manière transparente vers l'application s'exécutant sur le port interne `3000` (ou `3001` en cas d'occupation).
 
 Installez Nginx :
 ```bash
@@ -157,12 +158,12 @@ Créez un nouveau fichier de configuration Nginx dédié :
 nano /etc/nginx/sites-available/zara-gallery
 ```
 
-Collez la configuration d'ingénierie optimisée suivante (remplacez `caisse.zara-gallery.com` par votre nom de domaine réel ou adresse IP) :
+Collez la configuration d'ingénierie optimisée suivante :
 
 ```nginx
 server {
-    listen 80;
-    server_name caisse.zara-gallery.com;
+    listen 6000;
+    server_name _; # Écoute sur toutes les requêtes arrivant sur le port 6000
 
     # Gzip Compression active pour accélérer le chargement sur mobile (Ouagadougou / Réseaux lents)
     gzip on;
@@ -170,10 +171,13 @@ server {
     gzip_min_length 1000;
 
     # Serveur proxy vers le backend Express / Node s'exécutant sur le port 3000
-    # ASTUCE : Si le port 3000 est déjà occupé sur votre serveur, l'application se replie
-    # automatiquement sur le port 6000. Dans ce cas, remplacez "3000" par "6000" ci-dessous.
+    # (Ou port 3001 si le port 3000 de votre serveur Debian était déjà occupé)
     location / {
         proxy_pass http://127.0.0.1:3000;
+        
+        # En cas d'erreur de connexion sur le port 3000, Nginx essaie gracieusement le port de repli 3001
+        proxy_next_upstream error timeout http_502;
+        
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -184,7 +188,7 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
-    # Configuration du cache pour les images et assets lourds (utilisez 6000 si le port 3000 est occupé)
+    # Configuration du cache pour les images et assets lourds
     location ~* \.(?:ico|css|js|gif|jpe?g|png|woff2?|eot|otf|ttf|svg)$ {
         proxy_pass http://127.0.0.1:3000;
         expires 30d;
