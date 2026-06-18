@@ -51,6 +51,9 @@ export default function App() {
   const [wholesalers, setWholesalers] = useState<Wholesaler[]>(INITIAL_WHOLESALERS);
   const [wholesaleOrders, setWholesaleOrders] = useState<WholesaleOrder[]>([]);
 
+  // Real-time synchronization state
+  const [lastUpdatedTime, setLastUpdatedTime] = useState<string | null>(null);
+
   // Timer for debounced save
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isInitialMount = useRef(true);
@@ -64,6 +67,7 @@ export default function App() {
         const response = await fetch(`/api/data?t=${Date.now()}`, { cache: 'no-store' });
         if (response.ok) {
           const data = await response.json();
+          if (data.lastUpdated) setLastUpdatedTime(data.lastUpdated);
           if (data.products) setProducts(data.products);
           if (data.orders) setOrders(data.orders);
           
@@ -118,6 +122,7 @@ export default function App() {
     const saved = localStorage.getItem('zg_local_cache');
     if (saved) {
       const data = JSON.parse(saved);
+      if (data.lastUpdated) setLastUpdatedTime(data.lastUpdated);
       setProducts(data.products || INITIAL_PRODUCTS);
       setOrders(data.orders || []);
       
@@ -156,13 +161,16 @@ export default function App() {
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
 
     saveTimeoutRef.current = setTimeout(async () => {
+      const nowStr = new Date().toISOString();
+      setLastUpdatedTime(nowStr);
+
       // EXCLUDE messages from the general POS/Settings save block to prevent write race-conditions
       const dataToSave = {
         products, orders, users, cashMovements, auditLogs, 
         customers, promotions, stockMovements,
         pendingTickets, settings, wholesalers, wholesaleOrders,
         currentSession, sessionsHistory,
-        lastUpdated: new Date().toISOString()
+        lastUpdated: nowStr
       };
 
       localStorage.setItem('zg_local_cache', JSON.stringify(dataToSave));
@@ -187,6 +195,52 @@ export default function App() {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
   }, [products, orders, users, cashMovements, auditLogs, customers, promotions, stockMovements, pendingTickets, settings, wholesalers, wholesaleOrders, currentSession, sessionsHistory, isInitialized]);
+
+  // Real-time Core Data poller: Polls server every 3 seconds to sync browser sessions instantly
+  useEffect(() => {
+    if (!isInitialized) return;
+
+    let timerId: NodeJS.Timeout;
+
+    const pollCoreData = async () => {
+      // Do not poll if we are currently saving to avoid race conditions or overwriting unsaved states
+      if (isSyncing === 'SYNCING') return;
+
+      try {
+        const res = await fetch(`/api/data?t=${Date.now()}`, { cache: 'no-store' });
+        if (res.ok) {
+          const data = await res.json();
+          // Check if server data is newer or has a different lastUpdated string
+          if (data.lastUpdated && data.lastUpdated !== lastUpdatedTime) {
+            setLastUpdatedTime(data.lastUpdated);
+            if (data.products) setProducts(data.products);
+            if (data.orders) setOrders(data.orders);
+            if (data.cashMovements) setCashMovements(data.cashMovements);
+            if (data.auditLogs) setAuditLogs(data.auditLogs);
+            if (data.customers) setCustomers(data.customers);
+            if (data.promotions) setPromotions(data.promotions);
+            if (data.stockMovements) setStockMovements(data.stockMovements);
+            if (data.pendingTickets) setPendingTickets(data.pendingTickets);
+            if (data.settings) setSettings({ ...INITIAL_SETTINGS, ...data.settings });
+            if (data.wholesalers) setWholesalers(data.wholesalers);
+            if (data.wholesaleOrders) setWholesaleOrders(data.wholesaleOrders);
+            if (data.currentSession !== undefined) setCurrentSession(data.currentSession);
+            if (data.sessionsHistory) setSessionsHistory(data.sessionsHistory);
+            
+            let fetchedUsers = data.users ? data.users.map((u: any) => ({ ...u, isActive: u.isActive !== false })) : USERS;
+            setUsers(fetchedUsers);
+            setServerOnline(true);
+          }
+        }
+      } catch (err) {
+        console.error('Error polling core state updates:', err);
+      }
+    };
+
+    timerId = setInterval(pollCoreData, 3000);
+
+    return () => clearInterval(timerId);
+  }, [isInitialized, isSyncing, lastUpdatedTime]);
 
   // Real-time Chat poller: Polls messages independently every 4 seconds
   useEffect(() => {
