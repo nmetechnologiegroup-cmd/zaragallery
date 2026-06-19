@@ -783,9 +783,19 @@ export default function POS({
             {showCustomerList && !selectedCustomer && (
               <div className="absolute top-full left-0 right-0 bg-white border border-neutral-200 shadow-2xl z-50 max-h-48 overflow-y-auto">
                  {customers.filter(c => c.name.toLowerCase().includes(customerSearch.toLowerCase()) || c.phone.includes(customerSearch)).slice(0, 5).map(c => (
-                   <button key={c.id} onClick={() => { setSelectedCustomer(c); setShowCustomerList(false); }} className="w-full text-left p-3 hover:bg-neutral-50 flex justify-between items-center border-b border-neutral-100 last:border-0 text-[10px]">
-                      <div><p className="font-black uppercase">{c.name}</p><p className="text-neutral-400">{c.phone}</p></div>
-                      <span className="text-amber-500 font-black">{c.loyaltyPoints} pts</span>
+                   <button key={c.id} disabled={c.suspended} onClick={() => { if (!c.suspended) { setSelectedCustomer(c); setShowCustomerList(false); } }} className={`w-full text-left p-3 flex justify-between items-center border-b border-neutral-100 last:border-0 text-[10px] ${c.suspended ? 'opacity-40 cursor-not-allowed bg-red-100/10' : 'hover:bg-neutral-50'}`}>
+                      <div>
+                        <p className="font-black uppercase flex items-center gap-1.5">
+                          {c.name}
+                          {c.suspended && (
+                            <span className="bg-red-600 text-white px-1.5 py-0.5 text-[7px] font-black uppercase rounded-xs tracking-wider">
+                              Suspendu
+                            </span>
+                          )}
+                        </p>
+                        <p className="text-neutral-400">{c.phone}</p>
+                      </div>
+                      <span className={`${c.suspended ? 'text-neutral-400' : 'text-amber-500'} font-black`}>{c.loyaltyPoints} pts</span>
                    </button>
                  ))}
                  <div className="p-2 bg-neutral-50">

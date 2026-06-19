@@ -11,6 +11,7 @@ interface CRMProps {
 
 export default function CRM({ customers, setCustomers, orders, settings }: CRMProps) {
   const [search, setSearch] = useState('');
+  const [filterStatus, setFilterStatus] = useState<'ALL' | 'ACTIVE' | 'SUSPENDED'>('ALL');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
 
@@ -18,10 +19,13 @@ export default function CRM({ customers, setCustomers, orders, settings }: CRMPr
   const [newName, setNewName] = useState('');
   const [newPhone, setNewPhone] = useState('');
 
-  const filteredCustomers = customers.filter(c => 
-    c.name.toLowerCase().includes(search.toLowerCase()) || 
-    c.phone.includes(search)
-  );
+  const filteredCustomers = customers.filter(c => {
+    const matchesSearch = c.name.toLowerCase().includes(search.toLowerCase()) || c.phone.includes(search);
+    if (!matchesSearch) return false;
+    if (filterStatus === 'ACTIVE') return !c.suspended;
+    if (filterStatus === 'SUSPENDED') return !!c.suspended;
+    return true;
+  });
 
   const handleAddCustomer = (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,6 +50,19 @@ export default function CRM({ customers, setCustomers, orders, settings }: CRMPr
     return orders.filter(o => o.customer?.phone === phone);
   };
 
+  const handleToggleSuspendCustomer = (cust: Customer) => {
+    const updated = customers.map(c => c.id === cust.id ? { ...c, suspended: !c.suspended } : c);
+    setCustomers(updated);
+    setSelectedCustomer({ ...cust, suspended: !cust.suspended });
+  };
+
+  const handleDeleteCustomer = (cust: Customer) => {
+    if (!window.confirm(`Êtes-vous sûr de vouloir supprimer définitivement le client ${cust.name} ? Cette action est irréversible.`)) return;
+    const updated = customers.filter(c => c.id !== cust.id);
+    setCustomers(updated);
+    setSelectedCustomer(null);
+  };
+
   return (
     <div className="p-8 h-full overflow-y-auto bg-white flex-1 animate-in fade-in duration-500">
       <div className="max-w-7xl mx-auto">
@@ -68,7 +85,7 @@ export default function CRM({ customers, setCustomers, orders, settings }: CRMPr
           
           {/* List Section */}
           <div className="md:col-span-2">
-            <div className="mb-8 relative">
+            <div className="mb-4 relative">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
               <input 
                 type="text" 
@@ -79,34 +96,75 @@ export default function CRM({ customers, setCustomers, orders, settings }: CRMPr
               />
             </div>
 
+            <div className="flex gap-4 mb-8 border-b border-neutral-100 pb-2">
+              <button 
+                onClick={() => setFilterStatus('ALL')}
+                className={`pb-2 px-1 text-[9px] font-black uppercase tracking-[0.15em] border-b-2 transition-all ${filterStatus === 'ALL' ? 'border-black text-black' : 'border-transparent text-neutral-400 hover:text-black'}`}
+              >
+                Tous ({customers.length})
+              </button>
+              <button 
+                onClick={() => setFilterStatus('ACTIVE')}
+                className={`pb-2 px-1 text-[9px] font-black uppercase tracking-[0.15em] border-b-2 transition-all ${filterStatus === 'ACTIVE' ? 'border-black text-black' : 'border-transparent text-neutral-400 hover:text-black'}`}
+              >
+                Actifs ({customers.filter(c => !c.suspended).length})
+              </button>
+              <button 
+                onClick={() => setFilterStatus('SUSPENDED')}
+                className={`pb-2 px-1 text-[9px] font-black uppercase tracking-[0.15em] border-b-2 transition-all ${filterStatus === 'SUSPENDED' ? 'border-red-600 text-red-600' : 'border-transparent text-neutral-400 hover:text-red-500'}`}
+              >
+                Suspendus ({customers.filter(c => c.suspended).length})
+              </button>
+            </div>
+
             <div className="space-y-4">
-              {filteredCustomers.map(cust => (
-                <div 
-                  key={cust.id} 
-                  onClick={() => setSelectedCustomer(cust)}
-                  className={`p-6 border-2 transition-all cursor-pointer group rounded-none flex justify-between items-center ${selectedCustomer?.id === cust.id ? 'border-black bg-white shadow-2xl scale-[1.02]' : 'border-neutral-50 bg-neutral-50 hover:bg-white hover:border-neutral-200'}`}
-                >
-                  <div className="flex items-center gap-4">
-                     <div className="w-12 h-12 bg-black text-white flex items-center justify-center font-black text-lg">
-                        {cust.name.charAt(0)}
-                     </div>
-                     <div>
-                        <h4 className="font-black uppercase tracking-tighter text-black">{cust.name}</h4>
-                        <p className="text-[10px] font-bold text-neutral-400 uppercase flex items-center gap-2 tracking-widest">
-                           <Phone className="w-3 h-3" /> {cust.phone}
-                        </p>
-                     </div>
+              {filteredCustomers.length > 0 ? (
+                filteredCustomers.map(cust => (
+                  <div 
+                    key={cust.id} 
+                    onClick={() => setSelectedCustomer(cust)}
+                    className={`p-6 border-2 transition-all cursor-pointer group rounded-none flex justify-between items-center ${
+                      selectedCustomer?.id === cust.id 
+                        ? 'border-black bg-white shadow-2xl scale-[1.02]' 
+                        : cust.suspended 
+                          ? 'border-red-100 bg-red-50/20 opacity-75 hover:bg-red-50/35 hover:border-red-200'
+                          : 'border-neutral-50 bg-neutral-50 hover:bg-white hover:border-neutral-200'
+                    }`}
+                  >
+                    <div className="flex items-center gap-4">
+                       <div className={`w-12 h-12 flex items-center justify-center font-black text-lg ${cust.suspended ? 'bg-red-900 text-white' : 'bg-black text-white'}`}>
+                          {cust.name.charAt(0)}
+                       </div>
+                       <div>
+                          <h4 className="font-black uppercase tracking-tighter text-black flex items-center gap-2">
+                            {cust.name}
+                            {cust.suspended && (
+                              <span className="bg-red-600 text-white px-2 py-0.5 text-[8px] font-black rounded-xs uppercase tracking-widest">
+                                Suspendu
+                              </span>
+                            )}
+                          </h4>
+                          <p className="text-[10px] font-bold text-neutral-400 uppercase flex items-center gap-2 tracking-widest">
+                             <Phone className="w-3 h-3" /> {cust.phone}
+                          </p>
+                       </div>
+                    </div>
+                    <div className="text-right font-bold uppercase transition-colors">
+                       <p className={`text-xs font-black flex items-center justify-end gap-2 uppercase tracking-widest ${cust.suspended ? 'text-red-700' : 'text-black'}`}>
+                          <Star className={`w-3 h-3 ${cust.suspended ? 'text-red-400 fill-red-400' : 'text-amber-500 fill-amber-500'}`} /> {cust.loyaltyPoints} Points
+                       </p>
+                       <p className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest mt-1">
+                          Total Achat : {formatFCFA(cust.totalSpent)}
+                       </p>
+                    </div>
                   </div>
-                  <div className="text-right">
-                     <p className="text-xs font-black text-black flex items-center justify-end gap-2 uppercase tracking-widest">
-                        <Star className="w-3 h-3 text-amber-500 fill-amber-500" /> {cust.loyaltyPoints} Points
-                     </p>
-                     <p className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest mt-1">
-                        Total Achat : {formatFCFA(cust.totalSpent)}
-                     </p>
-                  </div>
+                ))
+              ) : (
+                <div className="text-center py-16 border-2 border-dashed border-neutral-100 text-neutral-300">
+                  <Users2 className="w-12 h-12 mx-auto mb-4 opacity-20" />
+                  <p className="text-[10px] font-bold uppercase tracking-widest italic">Aucun client trouvé pour cette sélection</p>
                 </div>
-              ))}
+              )}
             </div>
           </div>
 
@@ -150,11 +208,38 @@ export default function CRM({ customers, setCustomers, orders, settings }: CRMPr
 
                      <div className="bg-black p-6 text-white text-center">
                         <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-[0.3em] mb-2 font-mono">Rang Fidélité</p>
-                        <p className="text-xl font-black uppercase tracking-tighter">Membre Gold</p>
+                        <p className="text-xl font-black uppercase tracking-tighter">Membre {getVipStatus(selectedCustomer.loyaltyPoints).tier}</p>
                         <div className="w-full h-1 bg-white/10 mt-4 rounded-full overflow-hidden">
-                           <div className="w-3/4 h-full bg-white"></div>
+                           <div className="h-full bg-white transition-all duration-300" style={{ width: `${selectedCustomer.loyaltyPoints < 300 ? (selectedCustomer.loyaltyPoints / 300) * 100 : selectedCustomer.loyaltyPoints < 800 ? ((selectedCustomer.loyaltyPoints - 300) / 500) * 100 : selectedCustomer.loyaltyPoints < 1500 ? ((selectedCustomer.loyaltyPoints - 800) / 700) * 100 : 100}%` }}></div>
                         </div>
-                        <p className="text-[9px] font-bold text-neutral-400 mt-2 uppercase">Prochaine remise à 500 points</p>
+                        <p className="text-[9px] font-bold text-neutral-400 mt-2 uppercase">
+                           {selectedCustomer.loyaltyPoints < 300
+                             ? `Encore ${300 - selectedCustomer.loyaltyPoints} points pour devenir membre SILVER`
+                             : selectedCustomer.loyaltyPoints < 800
+                             ? `Encore ${800 - selectedCustomer.loyaltyPoints} points pour devenir membre GOLD`
+                             : selectedCustomer.loyaltyPoints < 1500
+                             ? `Encore ${1500 - selectedCustomer.loyaltyPoints} points pour devenir membre PLATINIUM`
+                             : 'Niveau VIP maximum atteint'}
+                        </p>
+                     </div>
+
+                     <div className="grid grid-cols-2 gap-4 pt-4 border-t border-neutral-200">
+                        <button
+                           onClick={() => handleToggleSuspendCustomer(selectedCustomer)}
+                           className={`py-3 px-4 text-[9px] font-black uppercase tracking-[0.15em] transition-all rounded-none border ${
+                              selectedCustomer.suspended
+                                 ? 'bg-neutral-900 border-neutral-900 text-white hover:bg-black'
+                                 : 'bg-amber-500 border-amber-500 text-black hover:bg-amber-600'
+                           }`}
+                        >
+                           {selectedCustomer.suspended ? 'Réactiver Account' : 'Suspendre Client'}
+                        </button>
+                        <button
+                           onClick={() => handleDeleteCustomer(selectedCustomer)}
+                           className="bg-red-600 border border-red-600 text-white py-3 px-4 text-[9px] font-black uppercase tracking-[0.15em] hover:bg-red-700 transition-all rounded-none"
+                        >
+                           Supprimer
+                        </button>
                      </div>
                   </div>
                </div>

@@ -123,6 +123,7 @@ export interface Customer {
   loyaltyPoints: number;
   totalSpent: number;
   lastPurchaseDate?: string;
+  suspended?: boolean;
 }
 
 export interface Promotion {
