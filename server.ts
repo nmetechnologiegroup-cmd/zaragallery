@@ -274,27 +274,15 @@ async function startServer() {
     });
   }
 
-  const listenWithFallback = (portToTry: number) => {
-    const serverInstance = app.listen(portToTry, '0.0.0.0', () => {
-      console.log('----------------------------------------------------');
-      console.log(`ZARA GALLERY - SERVEUR LOCAL ACTIVÉ`);
-      console.log(`Accès local : http://localhost:${portToTry}`);
-      console.log(`Accès Boutique (Wi-Fi) : http://[VOTRE-IP]:${portToTry}`);
-      console.log('----------------------------------------------------');
-    });
-
-    serverInstance.on('error', (err: any) => {
-      const fallbackPort = PORT + 1;
-      if (err.code === 'EADDRINUSE' && portToTry === PORT) {
-        console.warn(`⚠️ Le port ${portToTry} est déjà occupé. Tentative de repli automatique sur le port ${fallbackPort}...`);
-        listenWithFallback(fallbackPort);
-      } else {
-        console.error('❌ Erreur de démarrage du serveur :', err);
-      }
-    });
-  };
-
-  listenWithFallback(PORT);
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log('----------------------------------------------------');
+    console.log(`ZARA GALLERY - SERVEUR LOCAL ACTIVÉ`);
+    console.log(`Accès local : http://localhost:${PORT}`);
+    console.log(`Accès Boutique (Wi-Fi) : http://[VOTRE-IP]:${PORT}`);
+    console.log('----------------------------------------------------');
+  }).on('error', (err: any) => {
+    console.error('❌ Erreur de démarrage du serveur :', err);
+  });
 }
 
 startServer();
