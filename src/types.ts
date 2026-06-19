@@ -190,4 +190,6 @@ export interface AppSettings {
   storeName?: string;
   storeAddress?: string;
   storePhone?: string;
+  welcomeMessageEnabled?: boolean;
+  welcomeMessageText?: string;
 }

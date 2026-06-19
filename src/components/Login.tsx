@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { User, AppSettings } from '../types';
-import { Lock as LockIcon, AlertCircle } from 'lucide-react';
+import { Lock as LockIcon, AlertCircle, ChevronDown, User as UserIcon, Sparkles } from 'lucide-react';
 
 interface LoginProps {
   onLogin: (u: User) => void;
@@ -9,45 +9,94 @@ interface LoginProps {
 }
 
 export default function Login({ onLogin, users, settings }: LoginProps) {
+  const [username, setUsername] = useState('');
+  const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
+  
+  // Welcome Modal states
+  const [showWelcomeModal, setShowWelcomeModal] = useState(false);
+  const [validatedUser, setValidatedUser] = useState<User | null>(null);
 
   const handleSubmit = (e?: React.FormEvent) => {
-    if(e) e.preventDefault();
-    const user = users.find(u => u.pin === pin);
+    if (e) e.preventDefault();
+    setError('');
+
+    if (!username.trim()) {
+      setError("Saisissez votre nom d'utilisateur.");
+      return;
+    }
+    if (pin.length !== 6) {
+      setError("Le code PIN doit faire 6 chiffres.");
+      return;
+    }
+
+    // Match search case-insensitive to be friendly, but precise
+    const user = users.find(
+      u => u.name.toLowerCase().trim() === username.toLowerCase().trim() && u.pin === pin
+    );
+
     if (user) {
       if (user.isActive === false) {
         setError("Ce compte a été suspendu.");
         setPin('');
         return;
       }
-      onLogin(user);
+
+      setValidatedUser(user);
+      
+      // Check if welcome message is enabled
+      const isWelcomeEnabled = settings?.welcomeMessageEnabled ?? true;
+      if (isWelcomeEnabled) {
+        setShowWelcomeModal(true);
+      } else {
+        onLogin(user);
+      }
     } else {
-      setError("Code PIN incorrect ou révoqué.");
+      setError("Nom d'utilisateur ou PIN incorrect.");
       setPin('');
     }
   };
 
+  const handleWelcomeConfirm = () => {
+    if (validatedUser) {
+      onLogin(validatedUser);
+    }
+    setShowWelcomeModal(false);
+  };
+
   const addNumber = (num: string) => {
-    if (pin.length < 4) {
+    if (pin.length < 6) {
       const newPin = pin + num;
       setPin(newPin);
       setError('');
-      if(newPin.length === 4) {
-        setTimeout(() => {
-          const user = users.find(u => u.pin === newPin);
-          if (user) {
-            if (user.isActive === false) {
-               setError("Compte Suspendu.");
-               setPin('');
-               return;
+      
+      if (newPin.length === 6) {
+        // Automatically check if username is filled
+        if (username.trim()) {
+          setTimeout(() => {
+            const user = users.find(
+              u => u.name.toLowerCase().trim() === username.toLowerCase().trim() && u.pin === newPin
+            );
+            if (user) {
+              if (user.isActive === false) {
+                setError("Compte Suspendu.");
+                setPin('');
+                return;
+              }
+              setValidatedUser(user);
+              const isWelcomeEnabled = settings?.welcomeMessageEnabled ?? true;
+              if (isWelcomeEnabled) {
+                setShowWelcomeModal(true);
+              } else {
+                onLogin(user);
+              }
+            } else {
+              setError("Nom d'utilisateur ou PIN incorrect.");
+              setPin('');
             }
-            onLogin(user);
-          } else {
-            setError("Code PIN incorrect.");
-            setPin('');
-          }
-        }, 150);
+          }, 150);
+        }
       }
     }
   };
@@ -56,6 +105,9 @@ export default function Login({ onLogin, users, settings }: LoginProps) {
     setPin(prev => prev.slice(0, -1));
     setError('');
   };
+
+  // Filter active users to list in suggestion dropdown
+  const activeUsers = users.filter(u => u.isActive !== false);
 
   return (
     <div className="min-h-screen bg-neutral-50 flex flex-col items-center justify-start p-4 md:p-8 font-sans tracking-tight focus:outline-none overflow-y-auto py-12 md:py-24">
@@ -79,15 +131,71 @@ export default function Login({ onLogin, users, settings }: LoginProps) {
            </h2>
         </div>
 
-        <div className="px-6 md:px-8 py-6 md:py-8 bg-neutral-50/60 border-b border-neutral-100">
-          <div className="flex justify-center gap-2 md:gap-3 relative">
-            {[0, 1, 2, 3].map(i => (
-              <div key={i} className={`w-10 h-12 md:w-12 md:h-14 rounded-none flex items-center justify-center text-xl md:text-2xl font-bold transition-all duration-300 ${pin[i] ? 'bg-black text-white scale-102' : 'bg-white border border-neutral-200 text-transparent'}`}>
+        <form onSubmit={handleSubmit} className="px-6 md:px-8 pt-6">
+          {/* Username Input / Selection */}
+          <div className="mb-4 relative">
+            <label className="block text-[8px] font-black uppercase tracking-widest text-neutral-400 mb-1.5 font-mono">
+              NOM D'UTILISATEUR
+            </label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400">
+                <UserIcon className="w-3.5 h-3.5" />
+              </span>
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => {
+                  setUsername(e.target.value);
+                  setError('');
+                }}
+                onFocus={() => setShowUserDropdown(true)}
+                placeholder="Saisissez ou choisissez votre nom"
+                className="w-full pl-9 pr-8 py-3 bg-white border border-neutral-200 text-xs font-black uppercase tracking-wider outline-none focus:border-black transition-all"
+              />
+              <button
+                type="button"
+                onClick={() => setShowUserDropdown(!showUserDropdown)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-black"
+              >
+                <ChevronDown className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Micro autocomplete list */}
+            {showUserDropdown && (
+              <div className="absolute top-full left-0 right-0 bg-white border border-neutral-200 shadow-xl z-50 mt-1 max-h-40 overflow-y-auto">
+                {activeUsers.map(u => (
+                  <button
+                    key={u.id}
+                    type="button"
+                    onClick={() => {
+                      setUsername(u.name);
+                      setShowUserDropdown(false);
+                      setError('');
+                    }}
+                    className="w-full text-left p-3 hover:bg-neutral-50 border-b border-neutral-100 last:border-0 text-[10px] font-black uppercase tracking-wider text-neutral-700 flex justify-between items-center"
+                  >
+                    <span>{u.name}</span>
+                    <span className="text-[7px] text-neutral-400 bg-neutral-100 px-1.5 py-0.5 rounded-sm">{u.role}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </form>
+
+        <div className="px-6 md:px-8 pb-4 bg-neutral-50/60 border-b border-neutral-100">
+          <label className="block text-[8px] font-black uppercase tracking-widest text-neutral-400 mb-2 font-mono text-center">
+            CODE DE SÉCURITÉ (6 CHIFFRES)
+          </label>
+          <div className="flex justify-center gap-1.5 md:gap-2 relative">
+            {[0, 1, 2, 3, 4, 5].map(i => (
+              <div key={i} className={`w-8 h-10 md:w-10 md:h-12 rounded-none flex items-center justify-center text-lg md:text-xl font-bold transition-all duration-300 ${pin[i] ? 'bg-black text-white scale-102' : 'bg-white border border-neutral-200 text-transparent'}`}>
                 {pin[i] ? '•' : ''}
               </div>
             ))}
           </div>
-          <div className="h-4 mt-4 flex items-center justify-center">
+          <div className="h-4 mt-2 flex items-center justify-center">
               {error && (
                 <p className="text-red-600 text-[9px] font-bold uppercase tracking-widest flex items-center animate-in zoom-in duration-200">
                   <AlertCircle className="w-2.5 h-2.5 mr-1" /> {error}
@@ -120,8 +228,8 @@ export default function Login({ onLogin, users, settings }: LoginProps) {
               0
             </button>
             <button 
-              onClick={(e) => handleSubmit()}
-              disabled={pin.length !== 4}
+              onClick={() => handleSubmit()}
+              disabled={pin.length !== 6 || !username.trim()}
               className="bg-black hover:bg-neutral-800 disabled:bg-neutral-100 disabled:text-neutral-400 disabled:border-neutral-200 text-white font-bold text-[9px] md:text-[10px] h-12 md:h-14 rounded-none transition-all uppercase tracking-widest active:scale-95 border border-black cursor-pointer"
             >
               Entrer
@@ -129,16 +237,56 @@ export default function Login({ onLogin, users, settings }: LoginProps) {
           </div>
         </div>
 
-        <div className="bg-neutral-50 py-4 md:py-5 text-center border-t border-neutral-100 flex flex-col gap-1 md:gap-2 justify-center text-[8px] md:text-[9px] font-mono text-neutral-400">
-           <div className="flex justify-center gap-3 md:gap-4">
-             <span>Admin:<strong className="text-neutral-900 ml-1">1234</strong></span>
-             <span>Manager:<strong className="text-neutral-900 ml-1">5678</strong></span>
-             <span>Caisse:<strong className="text-neutral-900 ml-1">0000</strong></span>
-           </div>
-           <span className="text-[7px] md:text-[8px] tracking-[0.2em] font-sans text-neutral-300 font-bold">TERMINAL POS V4.2</span>
+        <div className="bg-neutral-50 py-4 text-center border-t border-neutral-100 flex flex-col gap-1 justify-center text-[8px] font-mono text-neutral-400">
+           <span className="text-[7px] tracking-[0.2em] font-sans text-neutral-300 font-bold">TERMINAL POS V4.2</span>
         </div>
 
       </div>
+
+      {/* Luxury Welcome Modal Popup */}
+      {showWelcomeModal && validatedUser && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-white border-2 border-black p-8 max-w-md w-full text-center shadow-2xl relative animate-in zoom-in duration-300">
+            <div className="flex justify-center mb-4">
+              <div className="w-16 h-16 bg-black text-amber-400 rounded-full flex items-center justify-center">
+                <Sparkles className="w-8 h-8 animate-pulse text-amber-400" />
+              </div>
+            </div>
+            
+            <h3 className="text-[10px] font-black tracking-[0.3em] uppercase text-neutral-400 font-mono mb-1">
+              Rapport de Connexion
+            </h3>
+            
+            <h2 className="text-2xl font-black uppercase text-black mb-4 tracking-tight">
+              BIENVENUE, {validatedUser.name} !
+            </h2>
+
+            <div className="bg-neutral-50 border border-neutral-100 p-5 mb-6">
+              <p className="text-[11px] font-bold text-neutral-800 uppercase tracking-wider leading-relaxed italic">
+                "{settings?.welcomeMessageText || 'QUE CETTE JOURNEE SOIT COURONNER DE SUCCES CE MESSAGE EST EDITER PAR L ADMIN'}"
+              </p>
+            </div>
+
+            <div className="border-t border-neutral-100 pt-4 mb-6 flex justify-around text-left">
+              <div>
+                <p className="text-[8px] font-bold text-neutral-400 uppercase font-mono">Détenteur</p>
+                <p className="text-[10px] font-black uppercase text-black">{validatedUser.name}</p>
+              </div>
+              <div>
+                <p className="text-[8px] font-bold text-neutral-400 uppercase font-mono">Habilitation</p>
+                <span className="bg-black text-white px-2 py-0.5 text-[8px] font-black rounded-xs uppercase tracking-wider">{validatedUser.role}</span>
+              </div>
+            </div>
+
+            <button
+              onClick={handleWelcomeConfirm}
+              className="w-full bg-black text-white py-3.5 font-black uppercase text-xs tracking-widest hover:bg-neutral-900 transition-all active:scale-[0.98]"
+            >
+              Accéder à l'interface
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
