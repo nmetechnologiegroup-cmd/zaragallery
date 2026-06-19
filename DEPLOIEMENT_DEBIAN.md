@@ -1,196 +1,234 @@
-# GUIDE DE DÉPLOIEMENT DE PRODUCTION — SERVEUR DEBIAN
-### Rédigé par un Ingénieur Systèmes & Réseaux
+# GUIDE DE DÉPLOIEMENT DE PRODUCTION AVEC DOCKER & SQLITE — SERVEUR DEBIAN
+### Rédigé pour ZARA GALLERY
 
-Ce guide complet détaille les instructions étape par étape pour déployer l'application de point de vente et gestion de stock **ZARA GALLERY** sur un serveur Debian (Debian 11 / Bullseye ou Debian 12 / Bookworm).
+Ce guide complet détaille les instructions étape par étape pour déployer l'application de point de vente et gestion de boutique **ZARA GALLERY** sur un serveur Debian (Debian 11 / Debian 12 ou tout autre serveur Linux) en utilisant **Docker Compose** et la base de données robuste **SQLite**.
 
 ---
 
 ## 📋 Table des Matières
-1. [Spécifications Techniques Requises](#1-spécifications-techniques-requises)
-2. [Étape 1 : Initialisation & Sécurisation de Debian](#étape-1--initialisation--sécurisation-de-debian)
-3. [Étape 2 : Installation de Node.js LTS et Utilitaires](#étape-2--installation-de-nodejs-lts-et-utilitaires)
-4. [Étape 3 : Déploiement du Code Source sur le Serveur](#étape-3--déploiement-du-code-source-sur-le-serveur)
-5. [Étape 4 : Gestion de Processus avec PM2 (Production Daemon)](#étape-4--gestion-de-processus-avec-pm2-production-daemon)
-6. [Étape 5 : Configuration Reverse Proxy Nginx](#étape-5--configuration-reverse-proxy-nginx)
-7. [Étape 6 : Sécurisation SSL / HTTPS avec Let's Encrypt Certbot](#étape-6--sécurisation-ssl--https-avec-lets-encrypt-certbot)
-8. [Étape 7 : Scripting Automisé de Sauvegardes](#étape-7--scripting-automatisé-de-sauvegardes-cron)
+1. [Pourquoi SQLite & Comment sont protégées vos données ?](#-pourquoi-sqlite--comment-sont-protégées-vos-données-)
+2. [Étape 1 : Préparation & Sécurisation de l'OS Debian](#étape-1--préparation--sécurisation-de-los-debian)
+3. [Étape 2 : Installation du moteur Docker d'entreprise](#étape-2--installation-du-moteur-docker-dentreprise)
+4. [Étape 3 : Déploiement & Configuration du Code Source](#étape-3--déploiement--configuration-du-code-source)
+5. [Étape 4 : Lancement de l'Application via Docker Compose](#étape-4--lancement-de-lapplication-via-docker-compose)
+6. [Étape 5 : Où se trouve mon fichier de base de données SQLite sur le serveur ?](#étape-5--où-se-trouve-mon-fichier-de-base-de-données-sqlite-sur-le-serveur-)
+7. [Étape 6 : Comment mettre à jour l'application sans perdre mes données ?](#étape-6--comment-mettre-à-jour-lapplication-sans-perdre-mes-données-)
+8. [Étape 7 : Configuration Reverse Proxy Nginx & HTTPS (SSL Certbot)](#étape-7--configuration-reverse-proxy-nginx--https-ssl-certbot)
+9. [Étape 8 : Sauvegardes Automatiques Automatisées (Cron)](#étape-8--sauvegardes-automatiques-automatisées-cron)
 
 ---
 
-## 1. Spécifications Techniques Requises
+## 🛠 Pourquoi SQLite & Comment sont protégées vos données ?
 
-*   **Instance Serveur** : VPS ou Serveur Dédié Debian installé (1 vCPU, 1 Go RAM minimum, 2 Go recommandés pour les builds esbuild/vite).
-*   **Accès** : Privilèges `root` ou accès via l'utilitaire `sudo`.
-*   **Domaine** : Un nom de domaine configuré (ex: `caisse.zara-gallery.com` ou adresse IP avec enregistrement DNS de type A pointant vers le serveur Debian).
+Contrairement à Firebase ou MySQL qui requièrent des connexions internet ou des serveurs distants lourds, l'application utilise désormais **SQLite (avec le mode journalisé ultra-rapide WAL)**. 
+
+### Sécurité absolue contre les pertes d'updates :
+1. **Dossier Persistant (`/app_data` vers `./data`)** : La base de données n'est **PAS** stockée à l'intérieur du conteneur Docker éphémère. Elle est montée sur le disque dur de votre serveur Debian dans le dossier `./data/zara_database.sqlite`.
+2. **Aucune perte lors d'un Update** : Lorsque vous mettez à jour votre code ou recompilez votre conteneur Docker, Docker préserve intact le dossier `./data`. Vos ventes, stocks et utilisateurs restent conservés à 100%.
+3. **Double Redondance de Sauvegarde** : En plus de la base SQLite active, l'application maintient continuellement une sauvegarde au format JSON dans `zara_database.json` pour une sécurité optimale.
 
 ---
 
-## Étape 1 : Initialisation & Sécurisation de Debian
+## Étape 1 : Préparation & Sécurisation de l'OS Debian
 
-Connectez-vous à votre serveur par SSH :
+Connectez-vous à votre serveur Linux Debian en SSH :
 ```bash
 ssh root@IP_DE_VOTRE_SERVEUR
 ```
 
-Mettez à jour le système de paquets et installez les dépendances système initiales :
+Mettez à jour le système d'exploitation :
 ```bash
 apt update && apt upgrade -y
-apt install -y curl git ufw build-essential
+apt install -y curl git ufw build-essential htop
 ```
 
-Saisissez les règles initiales de pare-feu UFW pour protéger l'OS et ouvrir le port de secours 8085 de Nginx :
+Configurez le Pare-feu UFW pour autoriser uniquement SSH (22), HTTP (80), HTTPS (443) et le port de l'application (8000) :
 ```bash
 ufw allow OpenSSH
-ufw allow 'Nginx Full'
-ufw allow 8085/tcp
+ufw allow 80/tcp
+ufw allow 443/tcp
+ufw allow 8000/tcp
 ufw --force enable
 ```
 
 ---
 
-## Étape 2 : Installation de Node.js LTS et Utilitaires
+## Étape 2 : Installation du moteur Docker d'entreprise
 
-Nous installons la version **Node.js 20.x LTS** via le dépôt officiel NodeSource :
+Pour simplifier le déploiement et isoler l'application, nous installons Docker et Docker Compose :
 
 ```bash
-# Installation du dépôt NodeSource
-curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+# Désinstaller les vieux paquets non officiels s'ils existent
+for pkg in docker.io docker-doc docker-compose podman-docker containerd runc; do apt-get remove $pkg; done
 
-# Installation effective de Node.js
-apt install -y nodejs
+# Installer les dépendances de clé HTTPS de Docker
+apt install -y ca-certificates gnupg
 
-# Vérification des versions installées
-node -v
-npm -v
-```
+# Ajouter la clé GPG officielle de Docker
+install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+chmod a+r /etc/apt/keyrings/docker.gpg
 
-Installez globalement **PM2** (Process Manager 2) qui s'assurera que l'application tourne en permanence en arrière-plan et redémarre automatiquement en cas de crash :
-```bash
-npm install --global pm2
+# Ajouter le dépôt apt stable
+echo \
+  "deb [arch="$(dpkg --print-architecture)" signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian \
+  "$(. /etc/os-release && echo "$VERSION_CODENAME")" stable" | \
+  tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+# Installer Docker Engine et Docker Compose
+apt update
+apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+# Vérifier que docker fonctionne
+docker --version
+docker compose version
 ```
 
 ---
 
-## Étape 3 : Déploiement du Code Source sur le Serveur
+## Étape 3 : Déploiement & Configuration du Code Source
 
-Créez le répertoire de destination dans `/var/www/` :
+Rendez-vous dans le dossier de votre application sur le serveur :
 ```bash
-mkdir -p /var/www/zara-gallery
-cd /var/www/zara-gallery
+cd /var/www/zara-gallery/zaragallery
 ```
 
-Transférez vos fichiers via Git, ou copiez vos fichiers locaux vers le serveur en utilisant `rsync`/`sftp` :
-```bash
-# Si vous utilisez Git
-git clone <votre_repo> .
-
-# Ou si vous copiez à la main, assurez-vous que les fichiers soient présents.
-```
-
-Installez les dépendances du projet :
-```bash
-npm install
-```
+Assurez-vous que les fichiers indispensables sont présents (ils le sont déjà sur votre serveur d'après votre commande `ls`) :
+*   `Dockerfile` (qui sert à empaqueter l'application Node + React)
+*   `docker-compose.yml` (qui définit le démarrage de l'application)
+*   `server.ts` (notre serveur d'API connecté à SQLite)
 
 ### Configuration des variables d'environnement
-Créez le fichier de configuration de production `.env` :
+Créez le fichier de configuration de production `.env` pour stocker les secrets :
 ```bash
 nano .env
 ```
-Ajoutez les variables requises (ajustez selon vos secrets) :
+Ajoutez les définitions suivantes :
 ```env
-PORT=3005
+PORT=3000
 NODE_ENV=production
-# Si une clé API Gemini est utilisée en arrière-plan
+# Si vous possédez une clé API Gemini pour l'assistance intelligente :
 GEMINI_API_KEY=votre_cle_api_securisee
 ```
 
-Configurez les scripts et lancez la compilation complète de l'application :
+---
+
+## Étape 4 : Lancement de l'Application via Docker Compose
+
+À partir du répertoire `/var/www/zara-gallery/zaragallery`, lancez la construction et le démarrage du serveur en tâche de fond (daemonized mode) :
+
 ```bash
-npm run build
+docker compose up -d --build
 ```
-Cette étape produit le bundle Web statique optimisé dans le dossier `/dist`.
+
+### Vérifier le statut de l'application :
+Vérifiez que le conteneur tourne correctement :
+```bash
+docker compose ps
+```
+Vous devriez voir `zara_app` avec le statut `running` ou `up` redirigeant le trafic du port externe `8000` vers le port interne `3000`.
+
+Lisez les logs de l'application en direct pour vous assurer que SQLite est correctement connecté :
+```bash
+docker compose logs -f
+```
+Vous devriez voir la ligne :
+`✅ Connected to SQLite database successfully!`
 
 ---
 
-## Étape 4 : Gestion de Processus avec PM2 (Production Daemon)
+## Étape 5 : Où se trouve mon fichier de base de données SQLite sur le serveur ?
 
-Démarrez votre serveur Node en utilisant PM2 sous l'égide de variables optimisées de production :
+### 💻 Sur la machine hôte (votre serveur Debian principal) :
+Parce que nous avons configuré un volume persistant de sécurité dans le fichier `docker-compose.yml`, Docker crée automatiquement un dossier nommé `data` dans votre dossier courant.
 
+Tapez les commandes de vérification suivantes depuis `/var/www/zara-gallery/zaragallery` :
 ```bash
-# Lancer l'application avec PM2
-pm2 start dist/server.cjs --name "zara-gallery-pos"
+# Lister le répertoire complet pour voir le dossier data créé par Docker
+ls -la
 
-# Configurer Service Systemd pour persister après un reboot de Debian
-pm2 startup systemd
+# Lister le dossier data pour localiser votre base SQLite
+ls -la data/
 ```
-*Note : PM2 affichera une commande `sudo env PATH=...` à exécuter. Copiez et collez cette commande affichée dans votre terminal Debian pour finaliser la persistance systémique.*
+**Vous verrez les fichiers suivants apparaître instantanément :**
+*   `data/zara_database.sqlite` (Votre base de données active principale !)
+*   `data/zara_database.sqlite-wal` (Fichier temporaire d'écriture rapide de SQLite)
+*   `data/zara_database.sqlite-shm` (Fichier de mémoire partagée pour la concurrence)
 
-Enregistrez l'état actuel de PM2 :
-```bash
-pm2 save
-```
+Ces fichiers contiennent l'intégralité de vos ventes, clients, produits et stocks en local !
 
-Pour visualiser l'état de l'application :
-```bash
-pm2 status
-pm2 logs "zara-gallery-pos"
-```
+### 📥 Comment télécharger ou faire un Backup de la Base SQLite ?
+Trois solutions s'offrent à vous :
+
+1. **Via l'URL d'Administration (Téléchargement direct en un clic depuis votre navigateur)** :
+   Naviguez simplement sur votre navigateur vers :
+   *   `http://VOTRE_IP:8000/api/db/download` -> Télécharge le fichier brut **.sqlite** compatible avec n'importe quel visualiseur DB comme *DBeaver* ou *DB Browser for SQLite*.
+   *   `http://VOTRE_IP:8000/api/db/dump` -> Génère et télécharge un **SQL Dump complet au format .sql** lisible avec toutes les tables et données prêtes à être injectées ou migrées si besoin !
+
+2. **Copier le fichier directement en SSH localement** :
+   Pour rapatrier la base de données sur votre ordinateur :
+   ```bash
+   scp root@IP_DE_VOTRE_SERVEUR:/var/www/zara-gallery/zaragallery/data/zara_database.sqlite ~/Downloads/
+   ```
+
+3. **Inspecter la base directement en SSH** :
+   Installez le client SQLite sur votre serveur Debian et connectez-vous :
+   ```bash
+   apt install -y sqlite3
+   sqlite3 data/zara_database.sqlite
+   ```
+   *Une fois dans l'interpreteur sqlite3, vous pouvez exécuter des SQL (ex: `.tables` pour voir les tables ou `SELECT * FROM app_state;` puis `.exit` pour quitter).*
 
 ---
 
-## Étape 5 : Configuration Reverse Proxy Nginx
+## Étape 6 : Comment mettre à jour l'application sans perdre mes données ?
 
-Si le port standard **80** est déjà occupé sur votre serveur Debian par un autre service (ex: Apache ou un autre site), nous configurons Nginx pour écouter sur le port **8085**. Tout le trafic sera retransmis de manière transparente vers l'application s'exécutant sur le port interne `3005` (ou `3006` en cas d'occupation).
+C'est l'un des avantages cruciaux de SQLite combiné à Docker Compose. Lorsque vous mettez à jour votre code (par exemple, si vous récupérez la dernière version de notre travail ou effectuez des modifications), suivez cette procédure simple de mise à jour sécurisée :
 
-> ⚠️ **ATTENTION : N'utilisez PAS le port 6000 !**
-> Tous les navigateurs web modernes (Firefox, Chrome, Safari, Edge) bloquent le port `6000` par mesure de sécurité (car il est réservé au protocole X11). Tenter d'accéder à `http://votre-ip:6000` déclenchera systématiquement l'erreur *"Cette adresse est interdite"* (Firefox) ou `ERR_UNSAFE_PORT` (Chrome). Le port **8085** est totalement sécurisé, autorisé par les navigateurs et libre d'utilisation.
+```bash
+# 1. Arrêter provisoirement le conteneur applicatif
+docker compose down
 
-Installez Nginx :
+# 2. Récupérer le nouveau code (via Git ou transfert de fichiers)
+git pull
+
+# 3. Recompiler le conteneur et le relancer en arrière-plan
+docker compose up -d --build
+```
+**Résultat** : Votre application est mise à jour avec le nouveau code, tandis que vos données SQLite situées dans `./data/zara_database.sqlite` restent intouchées et instantanément rechargées !
+
+---
+
+## Étape 7 : Configuration Reverse Proxy Nginx & HTTPS (SSL Certbot)
+
+Pour accéder à votre magasin de manière sécurisée et rapide sur le port standard **80** (HTTP) ou **443** (HTTPS) au lieu du port `8000`, configurez Nginx :
+
+Installez Nginx sur le serveur Debian de l'hôte :
 ```bash
 apt install -y nginx
 ```
 
-Désactivez la configuration par défaut :
+Désactivez la page d'accueil d'origine :
 ```bash
 rm /etc/nginx/sites-enabled/default
 ```
 
-Créez un nouveau fichier de configuration Nginx dédié :
+Créez un hôte virtuel dédié pour Zara Gallery :
 ```bash
 nano /etc/nginx/sites-available/zara-gallery
 ```
 
-Collez la configuration d'ingénierie optimisée suivante :
-
+Collez la configuration proxy optimisée pour transférer le trafic du port 80 vers le conteneur Docker (port 8000) :
 ```nginx
-# Pool de serveurs backend avec basculement automatique
-upstream zara_backend {
-    server 127.0.0.1:3005 max_fails=1 fail_timeout=10s;
-    server 127.0.0.1:3006 backup; # Port de repli automatique si 3005 est déjà occupé
-}
-
 server {
-    listen 8085;
-    server_name _; # Écoute sur toutes les requêtes arrivant sur le port 8085
+    listen 80;
+    server_name caisse.zara-gallery.com; # Remplacez par votre vrai nom de domaine ou l'adresse IP de votre serveur
 
-    # Gzip Compression active pour accélérer le chargement sur mobile (Ouagadougou / Réseaux lents)
     gzip on;
-    gzip_types text/plain text/css application/json application/javascript text/xml application/xml;
-    gzip_min_length 1000;
+    gzip_types text/plain text/css application/json application/javascript text/xml;
 
-    # Correction de l'erreur "400 Bad Request - Request Header Or Cookie Too Large"
-    client_header_buffer_size 16k;
-    large_client_header_buffers 4 32k;
-
-    # Serveur proxy vers le backend Express / Node s'exécutant sur le port 3005
-    # (Ou port 3006 si le port 3005 de votre serveur Debian était déjà occupé)
     location / {
-        proxy_pass http://zara_backend;
-        
-        # En cas d'erreur de connexion ou de Bad Gateway sur le port 3005, Nginx essaie gracieusement le port de repli 3006
-        proxy_next_upstream error timeout invalid_header http_502 http_503 http_504;
-        
+        proxy_pass http://127.0.0.1:8000;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -201,100 +239,64 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
-    # Configuration du cache pour les images et assets lourds
-    location ~* \.(?:ico|css|js|gif|jpe?g|png|woff2?|eot|otf|ttf|svg)$ {
-        proxy_pass http://zara_backend;
-        
-        # En-têtes indispensables pour éviter l'erreur 403 (Forbidden) de sécurité du serveur backend
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_cache_bypass $http_upgrade;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-
-        expires 30d;
-        add_header Cache-Control "public, no-transform";
-    }
-
-    error_log  /var/log/nginx/zara-gallery-error.log error;
-    access_log /var/log/nginx/zara-gallery-access.log;
+    # Autoriser l'envoi de photos de produits lourdes
+    client_max_body_size 50M;
 }
 ```
 
-Activez la configuration et redémarrez Nginx :
+Activez l'hôte virtuel et redémarrez Nginx :
 ```bash
 ln -s /etc/nginx/sites-available/zara-gallery /etc/nginx/sites-enabled/
-nginx -t # Test syntaxique - Doit être OK
+nginx -t     # Doit retourner syntax is ok
 systemctl restart nginx
 ```
 
----
-
-## Étape 6 : Sécurisation SSL / HTTPS avec Let's Encrypt Certbot
-
-Pour crypter les codes PIN, les informations financières, et l'accès administrateur, HTTPS est obligatoire en production.
-
-Installez Certbot pour Nginx :
+### Installation du certificat HTTPS auto-renouvelable Let's Encrypt :
 ```bash
 apt install -y certbot python3-certbot-nginx
-```
-
-Lancez la génération de certificats SSL (Certbot détectera automatiquement la configuration de votre serveur Nginx et modifiera les règles pour rediriger automatiquement tout le trafic HTTP vers HTTPS de manière sécurisée) :
-
-```bash
 certbot --nginx -d caisse.zara-gallery.com
 ```
 
-Répondez aux invites interactives (votre e-mail, acceptation des conditions d'utilisation). Certbot configurera automatiquement le renouvellement planifié (cron quotidien).
-
-Testez le renouvellement automatique :
-```bash
-certbot renew --dry-run
-```
-
 ---
 
-## Étape 7 : Scripting Automatisé de Sauvegardes (Cron)
+## Étape 8 : Sauvegardes Automatiques Automatisées (Cron)
 
-En tant qu'ingénieur informatique, la sécurité et la traçabilité des données sont capitales. Nous allons automatiser l'export régulier de la base de données.
+Pour faire des sauvegardes régulières tous les jours de votre base SQLite :
 
-Créez un script de sauvegarde automatique dans `/usr/local/bin/backup-pos.sh` :
+Créez le script de sauvegarde :
 ```bash
-nano /usr/local/bin/backup-pos.sh
+nano /usr/local/bin/backup-sqlite.sh
 ```
 
-Injectez le code d'archivage automatique suivant :
+Ajoutez ce code de sauvegarde (qui copie le fichier de base de données à chaud vers un sous-dossier sécurisé avec horodatage) :
 ```bash
 #!/bin/bash
-# Script de sauvegarde automatique de la Base de Données
-
-BACKUP_DIR="/var/backups/zara-gallery"
+BACKUP_DIR="/var/backups/zara-gallery-sqlite"
 DATE=$(date +'%Y-%m-%d_%Hh%M')
 mkdir -p "$BACKUP_DIR"
 
-# Si l'application dispose d'une API locale d'extraction, sauvegardez le fichier JSON généré
-# Sinon, sauvegardez les fichiers de base du dossier .env ou dossiers persistants locaux
-curl -s http://127.0.0.1:3005/api/backup > "$BACKUP_DIR/backup_$DATE.json"
+# Sauvegarder la base de données SQLITE active
+cp /var/www/zara-gallery/zaragallery/data/zara_database.sqlite "$BACKUP_DIR/zara_backup_$DATE.sqlite"
 
-# Conserver uniquement les 15 dernières sauvegardes pour préserver l'espace disque
-find "$BACKUP_DIR" -type f -name "backup_*.json" -mtime +15 -delete
+# Optionnel : Faire aussi un dump SQL texte au même moment
+curl -s http://127.0.0.1:8000/api/db/dump > "$BACKUP_DIR/zara_dump_$DATE.sql"
 
-echo "[$(date)] Sauvegarde ZARA GALLERY effectuée avec succès." >> /var/log/pos-backups.log
+# Conserver uniquement les 30 dernières sauvegardes pour ne pas saturer l'espace disque
+find "$BACKUP_DIR" -type f -mtime +30 -delete
+
+echo "[$(date)] Sauvegarde auto SQLite effectuée avec succès." >> /var/log/zara-backups.log
 ```
 
-Rendez le script exécutable :
+Rendez le script de sauvegarde exécutable :
 ```bash
-chmod +x /usr/local/bin/backup-pos.sh
+chmod +x /usr/local/bin/backup-sqlite.sh
 ```
 
-Ajoutez une règle `cron` pour déclencher la sauvegarde automatiquement tous les soirs à 21h00 :
+Automatisez le script avec Cron pour qu'il s'exécute automatiquement tous les soirs à 21h00 :
 ```bash
-(crontab -l 2b/dev/null; echo "0 21 * * * /usr/local/bin/backup-pos.sh >/dev/null 2>&1") | crontab -
+(crontab -l 2>/dev/null; echo "0 21 * * * /usr/local/bin/backup-sqlite.sh >/dev/null 2>&1") | crontab -
 ```
 
 ---
 
-### 🎉 FÉLICITATIONS ! Votre application d'encaissement et de gestion de stock Zara Gallery est maintenant déployée, démonisée par PM2, proxifiée sous Nginx avec chiffrement SSL (HTTPS) d'entreprise et sauvegardée chaque jour sur votre serveur Debian actif !
+### 🎉 Succès ! Votre application ZARA GALLERY utilise à présent l'architecture ultra-stable SQLite. Vos données sont persistées sur le disque de l'hôte, modifiables et consultables directement en local.

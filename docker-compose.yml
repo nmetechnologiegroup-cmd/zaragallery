@@ -15,10 +15,7 @@ services:
     volumes:
       # Mount SQLite database, messages file, and uploaded product images to host filesystem
       # This guarantees that updating or rebuilding your containers will never lose any data!
-      - sqlite_data:/app_data
+      - ./data:/app_data
       - ./uploads:/app/uploads
       - ./zara_database.json:/app/zara_database.json
       - ./zara_messages.json:/app/zara_messages.json
-
-volumes:
-  sqlite_data:
