@@ -1,3 +1,4 @@
+import dotenv from 'dotenv';
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import fs from 'fs/promises';
@@ -6,6 +7,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import Database from 'better-sqlite3';
 
+dotenv.config();
+
 // We use process.cwd() so that data files are stored at the root of the project, 
 // outside the 'dist' folder. This prevents Vite's build process from deleting the SQLite database.
 const rootDir = process.cwd();
@@ -13,11 +16,28 @@ const rootDir = process.cwd();
 const DATA_FILE = path.join(rootDir, 'zara_database.json');
 const MESSAGES_FILE = path.join(rootDir, 'zara_messages.json');
 
-// If /app_data exists (e.g. Docker Volume is mounted), we write the database file there to make it persistent and resilient to container updates.
-// Otherwise, we fallback to the project's root folder.
-let SQLITE_DB_FILE = path.join(rootDir, 'zara_database.sqlite');
-if (fsSync.existsSync('/app_data')) {
-  SQLITE_DB_FILE = path.join('/app_data', 'zara_database.sqlite');
+// We allow customized SQLite database path via environment variables to prevent deletion during container/local deployments.
+// Example: SQLITE_DB_PATH=/var/lib/zara/zara_database.sqlite
+let SQLITE_DB_FILE = process.env.SQLITE_DB_PATH;
+
+if (!SQLITE_DB_FILE) {
+  // Fallbacks: If /app_data exists (e.g. Docker Volume is mounted), we write the database file there.
+  // Otherwise, fallback to the project's root folder.
+  if (fsSync.existsSync('/app_data')) {
+    SQLITE_DB_FILE = path.join('/app_data', 'zara_database.sqlite');
+  } else {
+    SQLITE_DB_FILE = path.join(rootDir, 'zara_database.sqlite');
+  }
+} else {
+  // Ensure the parent directory of the custom database path exists!
+  const parentFolder = path.dirname(SQLITE_DB_FILE);
+  try {
+    if (!fsSync.existsSync(parentFolder)) {
+      fsSync.mkdirSync(parentFolder, { recursive: true });
+    }
+  } catch (err) {
+    console.error(`Failed to create parent folder for custom SQLite path: ${parentFolder}`, err);
+  }
 }
 
 async function startServer() {
@@ -137,7 +157,7 @@ async function startServer() {
   // --- API ROUTES ---
 
   // Create uploads directory if it doesn't exist
-  const uploadsDir = path.join(rootDir, 'uploads');
+  const uploadsDir = process.env.UPLOADS_DIR ? path.resolve(process.env.UPLOADS_DIR) : path.join(rootDir, 'uploads');
   try {
     await fs.mkdir(uploadsDir, { recursive: true });
   } catch (err) {
@@ -298,6 +318,77 @@ async function startServer() {
       res.download(SQLITE_DB_FILE, 'zara_database.sqlite');
     } catch (err: any) {
       res.status(500).json({ error: 'Failed to download SQLite file: ' + err.message });
+    }
+  });
+
+  // Manually import the local JSON backup (zara_database.json) into the active SQLite database
+  app.post('/api/db/import-json', async (req, res) => {
+    try {
+      if (!fsSync.existsSync(DATA_FILE)) {
+        return res.status(404).json({ error: `Le fichier de sauvegarde JSON n'a pas été trouvé sur le serveur à l'emplacement: ${DATA_FILE}` });
+      }
+
+      const rawData = await fs.readFile(DATA_FILE, 'utf-8');
+      const parsed = JSON.parse(rawData);
+
+      // Perform schema-like checks to make sure the JSON format is compliant
+      if (!parsed.products || !Array.isArray(parsed.products)) {
+        return res.status(400).json({ error: "Le fichier JSON n'appartient pas à Zara Gallery ou a un format incorrect." });
+      }
+
+      // Upsert the whole payload into the SQLite data table with ID = 1
+      db.prepare(`
+        INSERT INTO app_state (id, data) VALUES (1, ?)
+        ON CONFLICT(id) DO UPDATE SET data = excluded.data
+      `).run(rawData);
+
+      // Synchronize orders into the transactions_history partition
+      let syncedOrdersCount = 0;
+      if (parsed.orders && Array.isArray(parsed.orders)) {
+        const insertTx = db.prepare(`
+          INSERT INTO transactions_history (id, date, client_name, total, payment_method, items, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET
+            client_name = excluded.client_name,
+            total = excluded.total,
+            payment_method = excluded.payment_method,
+            items = excluded.items
+        `);
+        const insertMany = db.transaction((orders) => {
+          for (const order of orders) {
+            const orderDate = new Date(order.date).toISOString().slice(0, 19).replace('T', ' ');
+            const clientName = order.customer?.name || null;
+            const paymentMethodStr = order.payments?.map((p: any) => p.method).join(', ') || 'CASH';
+            insertTx.run(
+              order.id, 
+              orderDate,
+              clientName,
+              order.total,
+              paymentMethodStr,
+              JSON.stringify(order.items),
+              orderDate
+            );
+          }
+        });
+        insertMany(parsed.orders);
+        syncedOrdersCount = parsed.orders.length;
+      }
+
+      res.json({
+        success: true,
+        message: 'Importation et synchronisation complètes effectuées !',
+        stats: {
+          products: parsed.products?.length || 0,
+          orders: syncedOrdersCount,
+          users: parsed.users?.length || 0,
+          customers: parsed.customers?.length || 0,
+          promotions: parsed.promotions?.length || 0,
+          wholesalers: parsed.wholesalers?.length || 0,
+        }
+      });
+    } catch (e: any) {
+      console.error('Failed to import JSON schema:', e);
+      res.status(500).json({ error: "Échec de l'intégration du fichier de sauvegarde : " + e.message });
     }
   });
 
