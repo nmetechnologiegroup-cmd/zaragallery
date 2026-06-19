@@ -1,234 +1,250 @@
-# GUIDE DE DÉPLOIEMENT DE PRODUCTION AVEC DOCKER & SQLITE — SERVEUR DEBIAN
+# GUIDE DE DÉPLOIEMENT DE PRODUCTION AVEC PM2 & SQLITE — DEBIAN
 ### Rédigé pour ZARA GALLERY
 
-Ce guide complet détaille les instructions étape par étape pour déployer l'application de point de vente et gestion de boutique **ZARA GALLERY** sur un serveur Debian (Debian 11 / Debian 12 ou tout autre serveur Linux) en utilisant **Docker Compose** et la base de données robuste **SQLite**.
+Ce guide complet détaille les instructions étape par étape pour déployer l'application de point de vente et gestion de boutique **ZARA GALLERY** directement sur votre serveur Debian (Debian 11 / Debian 12) en utilisant **PM2** pour le contrôle du processus Node.js et **SQLite** de manière native. 
 
 ---
 
 ## 📋 Table des Matières
-1. [Pourquoi SQLite & Comment sont protégées vos données ?](#-pourquoi-sqlite--comment-sont-protégées-vos-données-)
-2. [Étape 1 : Préparation & Sécurisation de l'OS Debian](#étape-1--préparation--sécurisation-de-los-debian)
-3. [Étape 2 : Installation du moteur Docker d'entreprise](#étape-2--installation-du-moteur-docker-dentreprise)
-4. [Étape 3 : Déploiement & Configuration du Code Source](#étape-3--déploiement--configuration-du-code-source)
-5. [Étape 4 : Lancement de l'Application via Docker Compose](#étape-4--lancement-de-lapplication-via-docker-compose)
-6. [Étape 5 : Où se trouve mon fichier de base de données SQLite sur le serveur ?](#étape-5--où-se-trouve-mon-fichier-de-base-de-données-sqlite-sur-le-serveur-)
-7. [Étape 6 : Comment mettre à jour l'application sans perdre mes données ?](#étape-6--comment-mettre-à-jour-lapplication-sans-perdre-mes-données-)
-8. [Étape 7 : Configuration Reverse Proxy Nginx & HTTPS (SSL Certbot)](#étape-7--configuration-reverse-proxy-nginx--https-ssl-certbot)
-9. [Étape 8 : Sauvegardes Automatiques Automatisées (Cron)](#étape-8--sauvegardes-automatiques-automatisées-cron)
+1. [Pourquoi ce choix (PM2 + SQLite Direct) et comment vos données sont sauvegardées ?](#-pourquoi-ce-choix-pm2--sqlite-direct-et-comment-vos-données-sont-sauvegardées-)
+2. [Étape 1 : Préparation & Sécurisation de l'OS Debian en SSH](#étape-1--préparation--sécurisation-de-los-debian-en-ssh)
+3. [Étape 2 : Installation des prérequis de compilation (Node.js, C++ Compiler, SQLite3)](#étape-2--installation-des-prérequis-de-compilation-nodejs-c-compiler-sqlite3)
+4. [Étape 3 : Installation globale de PM2](#étape-3--installation-globale-de-pm2)
+5. [Étape 4 : Déploiement du Code Source sur le Serveur](#étape-4--déploiement-du-code-source-sur-le-serveur)
+6. [Étape 5 : Installation des dépendances & Build de production](#étape-5--installation-des-dépendances--build-de-production)
+7. [Étape 6 : Lancement de l'Application avec PM2](#étape-6--lancement-de-lapplication-avec-pm2)
+8. [Étape 7 : Où se trouve mon fichier SQLite et comment visualiser/extraire mes données ?](#étape-7--où-se-trouve-mon-fichier-sqlite-et-comment-visualiserextraire-mes-données-)
+9. [Étape 8 : Procédure de Mise à Jour Securisée de l'Application (Sans perte de données !)](#étape-8--procédure-de-mise-à-jour-securisée-de-lapplication-sans-perte-de-données-)
+10. [Étape 9 : Configuration Reverse Proxy Nginx & Certificats HTTPS SSL](#étape-9--configuration-reverse-proxy-nginx--certificats-https-ssl)
+11. [Étape 10 : Script de Sauvegarde Quotidienne Automatique (Cron Backup)](#étape-10--script-de-sauvegarde-quotidienne-automatique-cron-backup)
 
 ---
 
-## 🛠 Pourquoi SQLite & Comment sont protégées vos données ?
+## 🛠 Pourquoi ce choix (PM2 + SQLite Direct) et comment vos données sont sauvegardées ?
 
-Contrairement à Firebase ou MySQL qui requièrent des connexions internet ou des serveurs distants lourds, l'application utilise désormais **SQLite (avec le mode journalisé ultra-rapide WAL)**. 
+Plutôt que d'utiliser des conteneurs isolés (Docker), vous exécutez l'application directement sur le système d'exploitation Debian avec **PM2**.
 
-### Sécurité absolue contre les pertes d'updates :
-1. **Dossier Persistant (`/app_data` vers `./data`)** : La base de données n'est **PAS** stockée à l'intérieur du conteneur Docker éphémère. Elle est montée sur le disque dur de votre serveur Debian dans le dossier `./data/zara_database.sqlite`.
-2. **Aucune perte lors d'un Update** : Lorsque vous mettez à jour votre code ou recompilez votre conteneur Docker, Docker préserve intact le dossier `./data`. Vos ventes, stocks et utilisateurs restent conservés à 100%.
-3. **Double Redondance de Sauvegarde** : En plus de la base SQLite active, l'application maintient continuellement une sauvegarde au format JSON dans `zara_database.json` pour une sécurité optimale.
+*   **SQLite Ultra-rapide** : L'application utilise `better-sqlite3` configuré en mode **WAL (Write-Ahead Logging)** pour garantir des écritures instantanées sécurisées.
+*   **Emplacement de la Base de Données** : La base de données est stockée sur votre disque dur Debian sous forme d'un simple fichier hautement optimisé nommé `zara_database.sqlite` situé à la racine de votre dossier de déploiement (`/var/www/zara-gallery/zaragallery/zara_database.sqlite`).
+*   **Résistance aux Mises à Jour** : Les modifications de code, re-builds ou redémarrages de PM2 ne touchent jamais à vos fichiers de données SQLite. Vos clients, ventes, paniers et produits sont conservés indéfiniment.
 
 ---
 
-## Étape 1 : Préparation & Sécurisation de l'OS Debian
+## Étape 1 : Préparation & Sécurisation de l'OS Debian en SSH
 
-Connectez-vous à votre serveur Linux Debian en SSH :
+Connectez-vous en SSH à votre serveur Debian avec vos identifiants root :
 ```bash
 ssh root@IP_DE_VOTRE_SERVEUR
 ```
 
-Mettez à jour le système d'exploitation :
+Mettez à jour la liste des paquets de Debian et instaurez les utilitaires de base :
 ```bash
 apt update && apt upgrade -y
-apt install -y curl git ufw build-essential htop
+apt install -y curl git ufw htop build-essential wget
 ```
 
-Configurez le Pare-feu UFW pour autoriser uniquement SSH (22), HTTP (80), HTTPS (443) et le port de l'application (8000) :
+Configurez le Pare-feu UFW (Firewall) pour sécuriser l'accès aux ports d'administration, d'application et de site web :
 ```bash
 ufw allow OpenSSH
 ufw allow 80/tcp
 ufw allow 443/tcp
-ufw allow 8000/tcp
+ufw allow 3000/tcp
 ufw --force enable
 ```
 
 ---
 
-## Étape 2 : Installation du moteur Docker d'entreprise
+## Étape 2 : Installation des prérequis de compilation (Node.js, C++ Compiler, SQLite3)
 
-Pour simplifier le déploiement et isoler l'application, nous installons Docker et Docker Compose :
+Puisque nous utilisons `better-sqlite3`, le système d'exploitation compile automatiquement des liaisons binaires natives C++ lors de l'installation pour une vitesse de base de données inégalable. Nous devons donc installer Node.js (version 20) ainsi que la suite de compilateurs système de base :
 
 ```bash
-# Désinstaller les vieux paquets non officiels s'ils existent
-for pkg in docker.io docker-doc docker-compose podman-docker containerd runc; do apt-get remove $pkg; done
+# 1. Ajouter le référentiel officiel NodeSource pour Node.js 20 LTS
+curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
 
-# Installer les dépendances de clé HTTPS de Docker
-apt install -y ca-certificates gnupg
+# 2. Installer Node.js et les outils de développement système
+apt install -y nodejs build-essential python3 g++ make sqlite3
 
-# Ajouter la clé GPG officielle de Docker
-install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-chmod a+r /etc/apt/keyrings/docker.gpg
-
-# Ajouter le dépôt apt stable
-echo \
-  "deb [arch="$(dpkg --print-architecture)" signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian \
-  "$(. /etc/os-release && echo "$VERSION_CODENAME")" stable" | \
-  tee /etc/apt/sources.list.d/docker.list > /dev/null
-
-# Installer Docker Engine et Docker Compose
-apt update
-apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-
-# Vérifier que docker fonctionne
-docker --version
-docker compose version
+# 3. Vérifier les versions installées
+node -v
+npm -v
+sqlite3 --version
 ```
 
 ---
 
-## Étape 3 : Déploiement & Configuration du Code Source
+## Étape 3 : Installation globale de PM2
 
-Rendez-vous dans le dossier de votre application sur le serveur :
+**PM2** est l'outil d'excellence pour gérer vos applications Node.js en production sous Debian. Il surveille l'application en arrière-plan, redémarre le serveur en cas de panne de courant ou d'erreur système, et fournit des métriques d'IP en direct.
+
+Installez PM2 de manière globale sur le système :
+```bash
+npm install -g pm2
+pm2 --version
+```
+
+---
+
+## Étape 4 : Déploiement du Code Source sur le Serveur
+
+Rendez-vous dans le répertoire de votre site web sur le serveur. Si vous êtes déjà dans `/var/www/zara-gallery/zaragallery`, assurez-vous que les fichiers soient propres :
+
 ```bash
 cd /var/www/zara-gallery/zaragallery
 ```
 
-Assurez-vous que les fichiers indispensables sont présents (ils le sont déjà sur votre serveur d'après votre commande `ls`) :
-*   `Dockerfile` (qui sert à empaqueter l'application Node + React)
-*   `docker-compose.yml` (qui définit le démarrage de l'application)
-*   `server.ts` (notre serveur d'API connecté à SQLite)
-
-### Configuration des variables d'environnement
-Créez le fichier de configuration de production `.env` pour stocker les secrets :
+Créez le fichier de production de vos variables d'environnement secrètes :
 ```bash
 nano .env
 ```
-Ajoutez les définitions suivantes :
+Ajoutez les définitions suivantes (en remplaçant par vos valeurs si vous configurez d'autres ports ou l'intelligence artificielle Gemini) :
 ```env
 PORT=3000
 NODE_ENV=production
-# Si vous possédez une clé API Gemini pour l'assistance intelligente :
+# Si vous utilisez l'IA Zara (génération d'images et texte) :
 GEMINI_API_KEY=votre_cle_api_securisee
 ```
 
 ---
 
-## Étape 4 : Lancement de l'Application via Docker Compose
+## Étape 5 : Installation des dépendances & Build de production
 
-À partir du répertoire `/var/www/zara-gallery/zaragallery`, lancez la construction et le démarrage du serveur en tâche de fond (daemonized mode) :
+Exécutez l'installation des modules node d'après le manifeste. Le compilateur C++ `node-gyp` va compiler en local les dépendances de `better-sqlite3` pour Debian de manière automatisée.
 
 ```bash
-docker compose up -d --build
+# 1. Installer l'intégralité des modules NPM requis
+npm install
+
+# 2. Compiler l'interface web (React + Vite) et le serveur d'API (Express compilé via esbuild)
+npm run build
 ```
 
-### Vérifier le statut de l'application :
-Vérifiez que le conteneur tourne correctement :
-```bash
-docker compose ps
-```
-Vous devriez voir `zara_app` avec le statut `running` ou `up` redirigeant le trafic du port externe `8000` vers le port interne `3000`.
-
-Lisez les logs de l'application en direct pour vous assurer que SQLite est correctement connecté :
-```bash
-docker compose logs -f
-```
-Vous devriez voir la ligne :
-`✅ Connected to SQLite database successfully!`
+*Remarque : La commande de compilation crée un fichier exécutable backend unique de production ultra-rapide sous `dist/server.cjs` ainsi que les fichiers HTML/JS statiques optimisés pour le navigateur au sein du répertoire `/var/www/zara-gallery/zaragallery/dist`.*
 
 ---
 
-## Étape 5 : Où se trouve mon fichier de base de données SQLite sur le serveur ?
+## Étape 6 : Lancement de l'Application avec PM2
 
-### 💻 Sur la machine hôte (votre serveur Debian principal) :
-Parce que nous avons configuré un volume persistant de sécurité dans le fichier `docker-compose.yml`, Docker crée automatiquement un dossier nommé `data` dans votre dossier courant.
+Lancez l'application en tâche de fond avec PM2 en ciblant directement le code de serveur compilé de production :
 
-Tapez les commandes de vérification suivantes depuis `/var/www/zara-gallery/zaragallery` :
 ```bash
-# Lister le répertoire complet pour voir le dossier data créé par Docker
-ls -la
-
-# Lister le dossier data pour localiser votre base SQLite
-ls -la data/
+pm2 start dist/server.cjs --name "zara-gallery"
 ```
-**Vous verrez les fichiers suivants apparaître instantanément :**
-*   `data/zara_database.sqlite` (Votre base de données active principale !)
-*   `data/zara_database.sqlite-wal` (Fichier temporaire d'écriture rapide de SQLite)
-*   `data/zara_database.sqlite-shm` (Fichier de mémoire partagée pour la concurrence)
 
-Ces fichiers contiennent l'intégralité de vos ventes, clients, produits et stocks en local !
+Pour s'assurer que PM2 redémarre l'application automatiquement si votre serveur Debian subit un reboot électrique complet, configurez la persistance système :
 
-### 📥 Comment télécharger ou faire un Backup de la Base SQLite ?
-Trois solutions s'offrent à vous :
+```bash
+# Générer la commande de démarrage en tâche planifiée automatique pour root
+pm2 startup
+```
+*Copiez la commande affichée sur votre terminal par PM2 (qui ressemble à `sudo env PATH=$PATH... pm2 startup systemd -u root --hp ...`), collez-la et appuyez sur Entrée.*
 
-1. **Via l'URL d'Administration (Téléchargement direct en un clic depuis votre navigateur)** :
-   Naviguez simplement sur votre navigateur vers :
-   *   `http://VOTRE_IP:8000/api/db/download` -> Télécharge le fichier brut **.sqlite** compatible avec n'importe quel visualiseur DB comme *DBeaver* ou *DB Browser for SQLite*.
-   *   `http://VOTRE_IP:8000/api/db/dump` -> Génère et télécharge un **SQL Dump complet au format .sql** lisible avec toutes les tables et données prêtes à être injectées ou migrées si besoin !
+Une fois cela fait, sauvegardez l'état actuel de PM2 pour qu'il s'en rappelle au démarrage :
+```bash
+pm2 save
+```
 
-2. **Copier le fichier directement en SSH localement** :
-   Pour rapatrier la base de données sur votre ordinateur :
-   ```bash
-   scp root@IP_DE_VOTRE_SERVEUR:/var/www/zara-gallery/zaragallery/data/zara_database.sqlite ~/Downloads/
-   ```
-
-3. **Inspecter la base directement en SSH** :
-   Installez le client SQLite sur votre serveur Debian et connectez-vous :
-   ```bash
-   apt install -y sqlite3
-   sqlite3 data/zara_database.sqlite
-   ```
-   *Une fois dans l'interpreteur sqlite3, vous pouvez exécuter des SQL (ex: `.tables` pour voir les tables ou `SELECT * FROM app_state;` puis `.exit` pour quitter).*
+### Commandes utiles pour administrer l'application avec PM2
+*   **Voir l'état de l'application en temps réel** : `pm2 status`
+*   **Voir les logs en direct** (très utile pour surveiller les transactions de stocks) : `pm2 logs zara-gallery`
+*   **Redémarrer l'application** : `pm2 restart zara-gallery`
+*   **Arrêter l'application** : `pm2 stop zara-gallery`
+*   **Moniteur système CPU/Mémoire en temps réel** : `pm2 monit`
 
 ---
 
-## Étape 6 : Comment mettre à jour l'application sans perdre mes données ?
+## Étape 7 : Où se trouve mon fichier SQLite et comment visualiser/extraire mes données ?
 
-C'est l'un des avantages cruciaux de SQLite combiné à Docker Compose. Lorsque vous mettez à jour votre code (par exemple, si vous récupérez la dernière version de notre travail ou effectuez des modifications), suivez cette procédure simple de mise à jour sécurisée :
+Comme l'application tourne maintenant en local sur PM2, l'ensemble de votre base de données est contenue dans un fichier unique sur votre serveur !
+
+### 📁 1. Localisation physique du fichier SQLite :
+Le fichier est localisé à l'adresse root du projet :
+```bash
+/var/www/zara-gallery/zaragallery/zara_database.sqlite
+```
+*(Vous verrez également un fichier `zara_database.sqlite-wal` et `zara_database.sqlite-shm`. Ce sont des journaux d'indexation temporaires écrits par SQLite pour améliorer la vitesse et éviter la corruption de fichier. Laissez-les s'exécuter naturellement).*
+
+### 📥 2. Récupérer ou Visualiser vos données :
+Vous disposez de trois options très confortables :
+
+*   **Option A : Téléchargement en un clic depuis le navigateur (Interface d'administration)** :
+    Allez simplement sur votre navigateur sur :
+    *   `http://IP_DE_VOTRE_SERVEUR:3000/api/db/download` -> Télécharge le fichier brut **zara_database.sqlite** directement sur votre ordinateur. Vous pouvez l'ouvrir avec des logiciels gratuits comme **DB Browser for SQLite** ou **DBeaver** pour inspecter et trier toutes vos tables !
+    *   `http://IP_DE_VOTRE_SERVEUR:3000/api/db/dump` -> Génère un **SQL Schema & Data Dump standard (.sql)** au format texte contenant toutes les requêtes d'insertion, parfait si vous devez migrer les données d'un serveur Debian à un autre !
+
+*   **Option B : Inspecter directement en ligne de commande SSH** :
+    ```bash
+    cd /var/www/zara-gallery/zaragallery
+    sqlite3 zara_database.sqlite
+    ```
+    Une fois connecté à l'invite sqlite3, vous pouvez lancer vos requêtes SQL ordinaires :
+    *   `.tables` pour lister toutes vos tables (ex: `transactions_history`, `app_state`).
+    *   `SELECT * FROM transactions_history;` pour voir les rapports de vos ventes d'articles.
+    *   `.exit` pour quitter l'invite.
+
+*   **Option C : Télécharger à travers la console SSH avec SCP** :
+    Exécutez cette commande depuis votre ordinateur local (votre Mac ou PC Windows) pour copier le fichier SQLite actif vers vos téléchargements :
+    ```bash
+    scp root@IP_DE_VOTRE_SERVEUR:/var/www/zara-gallery/zaragallery/zara_database.sqlite ~/Downloads/
+    ```
+
+---
+
+## Étape 8 : Procédure de Mise à Jour Securisée de l'Application (Sans perte de données !)
+
+Lorsque l'application est améliorée ou que vous mettez à jour le code, **votre base SQLite ne sera jamais écrasée**. Utilisez cette procédure simple, sécurisée et éprouvée pour effectuer l'intégration continue de vos mises à jour :
 
 ```bash
-# 1. Arrêter provisoirement le conteneur applicatif
-docker compose down
+# 1. Se positionner dans le dossier de Zara Gallery
+cd /var/www/zara-gallery/zaragallery
 
-# 2. Récupérer le nouveau code (via Git ou transfert de fichiers)
+# 2. Récupérer les nouveaux fichiers applicatifs (par exemple par Git ou transfert SFTP)
 git pull
 
-# 3. Recompiler le conteneur et le relancer en arrière-plan
-docker compose up -d --build
+# 3. Installer les nouvelles dépendances npm éventuelles sans perturber la production
+npm install
+
+# 4. Compiler la nouvelle interface web et le serveur
+npm run build
+
+# 5. Redémarrer l'application avec PM2 pour appliquer les nouveautés instantanément
+pm2 restart zara-gallery
 ```
-**Résultat** : Votre application est mise à jour avec le nouveau code, tandis que vos données SQLite situées dans `./data/zara_database.sqlite` restent intouchées et instantanément rechargées !
+**Et c'est tout !** Votre serveur d'API recharge les connexions réseau en une demi-seconde. Vos rapports de caisse enregistrés, utilisateurs, stocks et paniers d'attente s'affichent toujours, intacts et fidèles.
 
 ---
 
-## Étape 7 : Configuration Reverse Proxy Nginx & HTTPS (SSL Certbot)
+## Étape 9 : Configuration Reverse Proxy Nginx & Certificats HTTPS SSL
 
-Pour accéder à votre magasin de manière sécurisée et rapide sur le port standard **80** (HTTP) ou **443** (HTTPS) au lieu du port `8000`, configurez Nginx :
+Pour que l'application soit accessible au public de manière hautement sécurisée sur le port par défaut (80 / 443) au lieu de devoir forcer le port `:3000` à la fin de l'URL, nous mettons en place Nginx :
 
-Installez Nginx sur le serveur Debian de l'hôte :
+Installez Nginx :
 ```bash
 apt install -y nginx
 ```
 
-Désactivez la page d'accueil d'origine :
+Supprimez l'hôte virtuel par défaut :
 ```bash
 rm /etc/nginx/sites-enabled/default
 ```
 
-Créez un hôte virtuel dédié pour Zara Gallery :
+Créez un profil de configuration pour Zara Gallery :
 ```bash
 nano /etc/nginx/sites-available/zara-gallery
 ```
 
-Collez la configuration proxy optimisée pour transférer le trafic du port 80 vers le conteneur Docker (port 8000) :
+Collez la configuration proxy optimisée suivante (veillez à remplacer `caisse.zara-gallery.com` par votre propre nom de domaine ou l'adresse IP globale de votre serveur) :
 ```nginx
 server {
     listen 80;
-    server_name caisse.zara-gallery.com; # Remplacez par votre vrai nom de domaine ou l'adresse IP de votre serveur
+    server_name caisse.zara-gallery.com; # Modifiez avec votre nom de domaine
 
+    # Compression GZIP pour des chargements de pages ultra-rapides
     gzip on;
     gzip_types text/plain text/css application/json application/javascript text/xml;
 
     location / {
-        proxy_pass http://127.0.0.1:8000;
+        proxy_pass http://127.0.0.1:3000; # Redirection vers le serveur d'API PM2
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -239,64 +255,66 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
-    # Autoriser l'envoi de photos de produits lourdes
+    # Autoriser l'envoi d'images d'articles ou rapports volumineux (jusqu'à 50 Mo)
     client_max_body_size 50M;
 }
 ```
 
-Activez l'hôte virtuel et redémarrez Nginx :
+Activez cette nouvelle configuration et relancez Nginx :
 ```bash
 ln -s /etc/nginx/sites-available/zara-gallery /etc/nginx/sites-enabled/
-nginx -t     # Doit retourner syntax is ok
+nginx -t     # Assure que la syntaxe est irréprochable
 systemctl restart nginx
 ```
 
-### Installation du certificat HTTPS auto-renouvelable Let's Encrypt :
+### Sécuriser gratuitement avec un certificat SSL Certbot (HTTPS) :
 ```bash
 apt install -y certbot python3-certbot-nginx
 certbot --nginx -d caisse.zara-gallery.com
 ```
+*Suivez les invites intuitives à l'écran. Certbot se chargera de configurer vos redirections HTTP vers HTTPS de manière automatique ainsi que le renouvellement automatique de vos certificats SSL tous les 3 mois.*
 
 ---
 
-## Étape 8 : Sauvegardes Automatiques Automatisées (Cron)
+## Étape 10 : Script de Sauvegarde Quotidienne Automatique (Cron Backup)
 
-Pour faire des sauvegardes régulières tous les jours de votre base SQLite :
+La base SQLite est stockée dans un fichier unique sur disque dur, ce qui rend son processus de copie de sauvegarde enfantin. Créons un script de sauvegarde automatique à chaud :
 
-Créez le script de sauvegarde :
+Créez le ficher de script système :
 ```bash
 nano /usr/local/bin/backup-sqlite.sh
 ```
 
-Ajoutez ce code de sauvegarde (qui copie le fichier de base de données à chaud vers un sous-dossier sécurisé avec horodatage) :
+Ajoutez les lignes de script de production suivantes, programmées pour cloner à chaud le fichier SQLite actif vers un répertoire de quarantaine, tout en nettoyant les anciennes copies obsolètes pour préserver votre disque dur :
+
 ```bash
 #!/bin/bash
 BACKUP_DIR="/var/backups/zara-gallery-sqlite"
 DATE=$(date +'%Y-%m-%d_%Hh%M')
 mkdir -p "$BACKUP_DIR"
 
-# Sauvegarder la base de données SQLITE active
-cp /var/www/zara-gallery/zaragallery/data/zara_database.sqlite "$BACKUP_DIR/zara_backup_$DATE.sqlite"
+# 1. Sauvegarder la base de données SQLITE active actuelle
+cp /var/www/zara-gallery/zaragallery/zara_database.sqlite "$BACKUP_DIR/zara_backup_$DATE.sqlite"
 
-# Optionnel : Faire aussi un dump SQL texte au même moment
-curl -s http://127.0.0.1:8000/api/db/dump > "$BACKUP_DIR/zara_dump_$DATE.sql"
+# 2. Sauvegarder optionnellement un dump SQL lisible en texte
+curl -s http://127.0.0.1:3000/api/db/dump > "$BACKUP_DIR/zara_dump_$DATE.sql"
 
-# Conserver uniquement les 30 dernières sauvegardes pour ne pas saturer l'espace disque
+# 3. Supprimer systématiquement les sauvegardes âgées de plus de 30 jours
 find "$BACKUP_DIR" -type f -mtime +30 -delete
 
-echo "[$(date)] Sauvegarde auto SQLite effectuée avec succès." >> /var/log/zara-backups.log
+echo "[$(date)] Sauvegarde native SQLite effectuée avec succès." >> /var/log/zara-backups.log
 ```
 
-Rendez le script de sauvegarde exécutable :
+Rendez le script hautement exécutable sur Debian :
 ```bash
 chmod +x /usr/local/bin/backup-sqlite.sh
 ```
 
-Automatisez le script avec Cron pour qu'il s'exécute automatiquement tous les soirs à 21h00 :
+Programmez une tâche récurrente automatisée avec Cron pour déclencher l'écriture d'une sauvegarde chaque jour à 21h00 :
 ```bash
 (crontab -l 2>/dev/null; echo "0 21 * * * /usr/local/bin/backup-sqlite.sh >/dev/null 2>&1") | crontab -
 ```
 
 ---
 
-### 🎉 Succès ! Votre application ZARA GALLERY utilise à présent l'architecture ultra-stable SQLite. Vos données sont persistées sur le disque de l'hôte, modifiables et consultables directement en local.
+### 🎉 Félicitations ! Votre boutique de point de vente ZARA GALLERY est à présent parfaitement configurée en PM2 avec SQLite. Votre infrastructure est autonome, compacte, et hautement résiliente face aux redémarrages serveur !

@@ -6,13 +6,23 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import Database from 'better-sqlite3';
 
-const PROJECT_ROOT = process.cwd();
-const DATA_FILE = path.join(PROJECT_ROOT, 'zara_database.json');
-const MESSAGES_FILE = path.join(PROJECT_ROOT, 'zara_messages.json');
+let currentDirname = process.cwd();
+try {
+  if (typeof __dirname !== 'undefined') {
+    currentDirname = __dirname;
+  } else if (typeof import.meta !== 'undefined' && import.meta.url) {
+    currentDirname = path.dirname(fileURLToPath(import.meta.url));
+  }
+} catch (e) {
+  currentDirname = process.cwd();
+}
+
+const DATA_FILE = path.join(currentDirname, 'zara_database.json');
+const MESSAGES_FILE = path.join(currentDirname, 'zara_messages.json');
 
 // If /app_data exists (e.g. Docker Volume is mounted), we write the database file there to make it persistent and resilient to container updates.
 // Otherwise, we fallback to the project's root folder.
-let SQLITE_DB_FILE = path.join(PROJECT_ROOT, 'zara_database.sqlite');
+let SQLITE_DB_FILE = path.join(currentDirname, 'zara_database.sqlite');
 if (fsSync.existsSync('/app_data')) {
   SQLITE_DB_FILE = path.join('/app_data', 'zara_database.sqlite');
 }
