@@ -6,23 +6,16 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import Database from 'better-sqlite3';
 
-let currentDirname = process.cwd();
-try {
-  if (typeof __dirname !== 'undefined') {
-    currentDirname = __dirname;
-  } else if (typeof import.meta !== 'undefined' && import.meta.url) {
-    currentDirname = path.dirname(fileURLToPath(import.meta.url));
-  }
-} catch (e) {
-  currentDirname = process.cwd();
-}
+// We use process.cwd() so that data files are stored at the root of the project, 
+// outside the 'dist' folder. This prevents Vite's build process from deleting the SQLite database.
+const rootDir = process.cwd();
 
-const DATA_FILE = path.join(currentDirname, 'zara_database.json');
-const MESSAGES_FILE = path.join(currentDirname, 'zara_messages.json');
+const DATA_FILE = path.join(rootDir, 'zara_database.json');
+const MESSAGES_FILE = path.join(rootDir, 'zara_messages.json');
 
 // If /app_data exists (e.g. Docker Volume is mounted), we write the database file there to make it persistent and resilient to container updates.
 // Otherwise, we fallback to the project's root folder.
-let SQLITE_DB_FILE = path.join(currentDirname, 'zara_database.sqlite');
+let SQLITE_DB_FILE = path.join(rootDir, 'zara_database.sqlite');
 if (fsSync.existsSync('/app_data')) {
   SQLITE_DB_FILE = path.join('/app_data', 'zara_database.sqlite');
 }
@@ -144,7 +137,7 @@ async function startServer() {
   // --- API ROUTES ---
 
   // Create uploads directory if it doesn't exist
-  const uploadsDir = path.join(currentDirname, 'uploads');
+  const uploadsDir = path.join(rootDir, 'uploads');
   try {
     await fs.mkdir(uploadsDir, { recursive: true });
   } catch (err) {
@@ -369,7 +362,7 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(currentDirname, 'dist');
+    const distPath = path.join(rootDir, 'dist');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
