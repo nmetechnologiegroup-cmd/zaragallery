@@ -915,7 +915,7 @@ export default function TeamManagement({
                  <div className="p-6 border border-neutral-200 bg-neutral-50 rounded-sm">
                     <p className="text-[9px] font-black uppercase text-neutral-400 tracking-widest mb-1">Architecture du Système</p>
                     <p className="text-[10px] text-neutral-500 tracking-tight leading-relaxed">
-                       Toute la data est sérialisée et est stockée localement. Effectuez régulièrement des exportations cryptographiques JSON de maintenance pour prévenir les pannes matérielles.
+                       Le système utilise une base de données locale sécurisée (SQLite) qui synchronise toutes les données. Les exportations JSON assurent la portabilité, et les imports remplacent l'état Cloud.
                     </p>
                  </div>
               </div>
@@ -933,11 +933,39 @@ export default function TeamManagement({
                  {/* Snapshot Maintenance */}
                  <div className="p-8 border border-neutral-150 bg-white shadow-sm space-y-6">
                     <div>
-                       <h4 className="text-lg font-black uppercase tracking-tighter">Maintenance Globale</h4>
-                       <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Sauvegardes intégrales et injections de snapshots système</p>
+                       <h4 className="text-lg font-black uppercase tracking-tighter">Maintenance Globale (Base SQLite)</h4>
+                       <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Sauvegardes brutes, SQL dumps, et injections système JSON</p>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4">
+                       <div className="p-6 border border-neutral-100 bg-neutral-50/50 flex flex-col justify-between rounded-sm">
+                          <div>
+                             <Database className="w-8 h-8 text-neutral-900 mb-4" />
+                             <h5 className="text-xs font-black uppercase tracking-widest mb-2">Sauvegarde Fichier .sqlite</h5>
+                             <p className="text-[10px] text-neutral-400 uppercase font-bold leading-relaxed mb-6">Télécharger directement le fichier brut de la base de données SQLite utilisé par Zara Gallery.</p>
+                          </div>
+                          <a 
+                            href="/api/db/download"
+                            className="w-full py-4 bg-black text-white text-[10px] font-black uppercase tracking-widest hover:bg-neutral-800 transition-all flex items-center justify-center gap-2 text-center"
+                          >
+                             <Database className="w-4 h-4" /> Sauvegarder .sqlite
+                          </a>
+                       </div>
+                       
+                       <div className="p-6 border border-neutral-100 bg-neutral-50/50 flex flex-col justify-between rounded-sm">
+                          <div>
+                             <Terminal className="w-8 h-8 text-neutral-900 mb-4" />
+                             <h5 className="text-xs font-black uppercase tracking-widest mb-2">Sauvegarde SQL Dump</h5>
+                             <p className="text-[10px] text-neutral-400 uppercase font-bold leading-relaxed mb-6">Générer un fichier .sql complet lisible, compatible avec d'autres gestionnaires de base.</p>
+                          </div>
+                          <a 
+                            href="/api/db/dump"
+                            className="w-full py-4 border-2 border-black text-black bg-white hover:bg-neutral-50 text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 text-center"
+                          >
+                             <FileSpreadsheet className="w-4 h-4" /> Sauvegarder .sql
+                          </a>
+                       </div>
+
                        <div className="p-6 border border-neutral-100 bg-neutral-50/50 flex flex-col justify-between rounded-sm">
                           <div>
                              <FolderDown className="w-8 h-8 text-neutral-900 mb-4" />
@@ -946,7 +974,7 @@ export default function TeamManagement({
                           </div>
                           <button 
                             onClick={onDownloadBackup}
-                            className="w-full py-4 bg-black text-white text-[10px] font-black uppercase tracking-widest hover:bg-neutral-800 transition-all flex items-center justify-center gap-2"
+                            className="w-full py-4 border-2 border-black text-black bg-white hover:bg-neutral-50 text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2"
                           >
                              <FileSpreadsheet className="w-4 h-4" /> Exporter en Fichier .json
                           </button>
