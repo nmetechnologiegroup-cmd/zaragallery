@@ -82,53 +82,66 @@ async function startServer() {
       items TEXT,
       created_at TEXT
     );
-  `);
+  `);  // Seed / Migrate app_state if empty or reset
+  let existingStateRow = db.prepare('SELECT data FROM app_state WHERE id = 1').get() as { data: string } | undefined;
+  let isDbStateEmpty = !existingStateRow || !existingStateRow.data || existingStateRow.data === '{}' || existingStateRow.data === '{"products":[]}';
 
-  // Seed / Migrate app_state if empty
-  const row = db.prepare('SELECT COUNT(*) as count FROM app_state WHERE id = 1').get() as { count: number };
-  if (row.count === 0) {
+  if (isDbStateEmpty) {
     let initialData = '{}';
     try { 
       initialData = await fs.readFile(DATA_FILE, 'utf-8'); 
-      console.log('✅ Migrated initial data from backup JSON to SQLite');
-    } catch(e) {}
-    
-    db.prepare('INSERT INTO app_state (id, data) VALUES (1, ?)').run(initialData);
-
-    // Sync orders into the partitioned transactions_history table if present
-    try {
-      const parsed = JSON.parse(initialData);
-      if (parsed.orders && Array.isArray(parsed.orders)) {
-        const insertTx = db.prepare(`
-          INSERT INTO transactions_history (id, date, client_name, total, payment_method, items, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
-          ON CONFLICT(id) DO UPDATE SET
-            client_name = excluded.client_name,
-            total = excluded.total,
-            payment_method = excluded.payment_method,
-            items = excluded.items
-        `);
-        const insertMany = db.transaction((orders) => {
-          for (const order of orders) {
-            const orderDate = new Date(order.date).toISOString().slice(0, 19).replace('T', ' ');
-            const clientName = order.customer?.name || null;
-            const paymentMethodStr = order.payments?.map((p: any) => p.method).join(', ') || 'CASH';
-            insertTx.run(
-              order.id, 
-              orderDate,
-              clientName,
-              order.total,
-              paymentMethodStr,
-              JSON.stringify(order.items),
-              orderDate
-            );
-          }
-        });
-        insertMany(parsed.orders);
-        console.log('✅ Synced orders to transactions_history table');
-      }
+      console.log('✅ Found root backup data from zara_database.json');
     } catch(e) {
-      console.error('Error syncing orders during migration:', e);
+      try {
+        const backupFile = path.join(rootDir, 'zara_gestion_db', 'zara_data.json');
+        initialData = await fs.readFile(backupFile, 'utf-8');
+        console.log('✅ Recovered state from committed backup zara_gestion_db/zara_data.json successfully!');
+      } catch(backupErr) {
+        console.error('❌ Could not read any master data backup file', backupErr);
+      }
+    }
+    
+    if (initialData && initialData !== '{}') {
+      db.prepare(`
+        INSERT INTO app_state (id, data) VALUES (1, ?)
+        ON CONFLICT(id) DO UPDATE SET data = excluded.data
+      `).run(initialData);
+
+      // Sync orders into the partitioned transactions_history table if present
+      try {
+        const parsed = JSON.parse(initialData);
+        if (parsed.orders && Array.isArray(parsed.orders)) {
+          const insertTx = db.prepare(`
+            INSERT INTO transactions_history (id, date, client_name, total, payment_method, items, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+              client_name = excluded.client_name,
+              total = excluded.total,
+              payment_method = excluded.payment_method,
+              items = excluded.items
+          `);
+          const insertMany = db.transaction((orders) => {
+            for (const order of orders) {
+              const orderDate = new Date(order.date).toISOString().slice(0, 19).replace('T', ' ');
+              const clientName = order.customer?.name || null;
+              const paymentMethodStr = order.payments?.map((p: any) => p.method).join(', ') || 'CASH';
+              insertTx.run(
+                order.id, 
+                orderDate,
+                clientName,
+                order.total,
+                paymentMethodStr,
+                JSON.stringify(order.items),
+                orderDate
+              );
+            }
+          });
+          insertMany(parsed.orders);
+          console.log('✅ Synced orders to transactions_history table');
+        }
+      } catch(e) {
+        console.error('Error syncing orders during migration:', e);
+      }
     }
   }
 
@@ -136,22 +149,38 @@ async function startServer() {
   const msgRow = db.prepare('SELECT COUNT(*) as count FROM app_messages').get() as { count: number };
   if (msgRow.count === 0) {
     try {
-      const messagesData = await fs.readFile(MESSAGES_FILE, 'utf-8');
-      const messages = JSON.parse(messagesData);
-      if (Array.isArray(messages) && messages.length > 0) {
-        const insertMsg = db.prepare(`
-          INSERT INTO app_messages (id, sender_id, receiver_id, text, timestamp)
-          VALUES (?, ?, ?, ?, ?)
-        `);
-        const insertMany = db.transaction((msgs) => {
-          for (const msg of msgs) {
-            insertMsg.run(msg.id, msg.senderId, msg.receiverId || 'GLOBAL', msg.text, msg.timestamp);
-          }
-        });
-        insertMany(messages);
-        console.log('✅ Migrated messages from backup JSON to SQLite');
+      let messagesData = '';
+      try {
+        messagesData = await fs.readFile(MESSAGES_FILE, 'utf-8');
+      } catch (e) {
+        const backupFile = path.join(rootDir, 'zara_gestion_db', 'zara_data.json');
+        const backupContent = await fs.readFile(backupFile, 'utf-8');
+        const parsed = JSON.parse(backupContent);
+        if (parsed.messages) {
+          messagesData = JSON.stringify(parsed.messages);
+        }
       }
-    } catch(e) {}
+
+      if (messagesData) {
+        const messages = JSON.parse(messagesData);
+        if (Array.isArray(messages) && messages.length > 0) {
+          const insertMsg = db.prepare(`
+            INSERT INTO app_messages (id, sender_id, receiver_id, text, timestamp)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO NOTHING
+          `);
+          const insertMany = db.transaction((msgs) => {
+            for (const msg of msgs) {
+              insertMsg.run(msg.id, msg.senderId || msg.sender_id, msg.receiverId || msg.receiver_id || 'GLOBAL', msg.text, msg.timestamp);
+            }
+          });
+          insertMany(messages);
+          console.log('✅ Migrated messages list successfully to SQLite');
+        }
+      }
+    } catch(e) {
+      console.error('Error migrating message logs from backup:', e);
+    }
   }
 
   // --- API ROUTES ---
