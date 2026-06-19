@@ -6,3 +6,11 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Database & Uploads
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+zara_database.json
+zara_messages.json
+uploads/

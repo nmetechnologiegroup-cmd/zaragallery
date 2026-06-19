@@ -22,34 +22,7 @@ const INITIAL_WHOLESALERS: Wholesaler[] = [
   { id: 'GROS-2', name: 'Alou Diallo', companyName: 'Diallo Frères Import', phone: '+221 70 444 33 22', email: 'contact@diallobros.com', address: 'Marché HLM, Dakar', balance: 1450000, creditLimit: 8000000, createdAt: new Date().toISOString() },
 ];
 
-// Helper to generate a deep-content signature of mutable server states (excluding timestamps)
-const getPayloadSignature = (p: any): string => {
-  if (!p) return '';
-  try {
-    return JSON.stringify({
-      products: p.products || [],
-      orders: p.orders || [],
-      users: p.users ? p.users.map((u: any) => ({ ...u, isActive: u.isActive !== false })) : [],
-      cashMovements: p.cashMovements || [],
-      auditLogs: p.auditLogs || [],
-      customers: p.customers || [],
-      promotions: p.promotions || [],
-      stockMovements: p.stockMovements || [],
-      pendingTickets: p.pendingTickets || [],
-      settings: p.settings ? { ...INITIAL_SETTINGS, ...p.settings } : INITIAL_SETTINGS,
-      wholesalers: p.wholesalers || [],
-      wholesaleOrders: p.wholesaleOrders || [],
-      currentSession: p.currentSession || null,
-      sessionsHistory: p.sessionsHistory || []
-    });
-  } catch (err) {
-    console.error('Error generating payload signature:', err);
-    return '';
-  }
-};
-
 export default function App() {
-  const lastServerSignatureRef = useRef<string>('');
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [activeTab, setActiveTab] = useState('pos');
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -94,8 +67,6 @@ export default function App() {
         const response = await fetch(`/api/data?t=${Date.now()}`, { cache: 'no-store' });
         if (response.ok) {
           const data = await response.json();
-          lastServerSignatureRef.current = getPayloadSignature(data);
-          
           if (data.lastUpdated) setLastUpdatedTime(data.lastUpdated);
           if (data.products) setProducts(data.products);
           if (data.orders) setOrders(data.orders);
@@ -151,7 +122,6 @@ export default function App() {
     const saved = localStorage.getItem('zg_local_cache');
     if (saved) {
       const data = JSON.parse(saved);
-      lastServerSignatureRef.current = getPayloadSignature(data);
       if (data.lastUpdated) setLastUpdatedTime(data.lastUpdated);
       setProducts(data.products || INITIAL_PRODUCTS);
       setOrders(data.orders || []);
@@ -180,7 +150,7 @@ export default function App() {
     }
   };
 
-  // Debounced save with circular-write prevention using content signature checking
+  // Debounced save
   useEffect(() => {
     if (!isInitialized) return;
     if (isInitialMount.current) {
@@ -191,23 +161,8 @@ export default function App() {
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
 
     saveTimeoutRef.current = setTimeout(async () => {
-      const currentSignature = getPayloadSignature({
-        products, orders, users, cashMovements, auditLogs, 
-        customers, promotions, stockMovements,
-        pendingTickets, settings, wholesalers, wholesaleOrders,
-        currentSession, sessionsHistory
-      });
-
-      // Prevent redundant saves if the payload matches the last known server state
-      if (currentSignature === lastServerSignatureRef.current) {
-        setIsSyncing('SAVED');
-        setTimeout(() => setIsSyncing('IDLE'), 1500);
-        return;
-      }
-
       const nowStr = new Date().toISOString();
       setLastUpdatedTime(nowStr);
-      lastServerSignatureRef.current = currentSignature;
 
       // EXCLUDE messages from the general POS/Settings save block to prevent write race-conditions
       const dataToSave = {
@@ -234,7 +189,7 @@ export default function App() {
         setIsSyncing('SAVED');
         setTimeout(() => setIsSyncing('IDLE'), 2000);
       }
-    }, 1000); // 1 second debounce for batching user edits
+    }, 500);
 
     return () => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
@@ -248,21 +203,16 @@ export default function App() {
     let timerId: NodeJS.Timeout;
 
     const pollCoreData = async () => {
-      // Do not poll if we are actively saving to avoid race conditions or overwriting unsaved states
+      // Do not poll if we are currently saving to avoid race conditions or overwriting unsaved states
       if (isSyncing === 'SYNCING') return;
 
       try {
         const res = await fetch(`/api/data?t=${Date.now()}`, { cache: 'no-store' });
         if (res.ok) {
           const data = await res.json();
-          const remoteSignature = getPayloadSignature(data);
-
-          // Compare standard content signatures instead of just matching raw lastUpdated timestamps.
-          // This avoids endless feedback loops when multiple open browser tabs/windows write to the server file back and forth!
-          if (remoteSignature !== lastServerSignatureRef.current) {
-            lastServerSignatureRef.current = remoteSignature;
-
-            if (data.lastUpdated) setLastUpdatedTime(data.lastUpdated);
+          // Check if server data is newer or has a different lastUpdated string
+          if (data.lastUpdated && data.lastUpdated !== lastUpdatedTime) {
+            setLastUpdatedTime(data.lastUpdated);
             if (data.products) setProducts(data.products);
             if (data.orders) setOrders(data.orders);
             if (data.cashMovements) setCashMovements(data.cashMovements);
@@ -290,7 +240,7 @@ export default function App() {
     timerId = setInterval(pollCoreData, 3000);
 
     return () => clearInterval(timerId);
-  }, [isInitialized, isSyncing]);
+  }, [isInitialized, isSyncing, lastUpdatedTime]);
 
   // Real-time Chat poller: Polls messages independently every 4 seconds
   useEffect(() => {
