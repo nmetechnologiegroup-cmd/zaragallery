@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import ReactBarcode from 'react-barcode';
-import { Product, ProductVariant, ProductMovement } from '../types';
+import { Product, ProductVariant, ProductMovement, AppSettings } from '../types';
 import { Plus, Edit2, Trash2, Package, Search, ChevronDown, Filter, MoreVertical, X, Shirt, Baby, Footprints, Watch, ShoppingBag, History as HistoryIcon, Barcode as BarcodeIcon, ShieldAlert, Boxes, Truck, Image as ImageIcon, Download } from 'lucide-react';
 import { CATEGORIES } from '../data';
 import { uploadImage } from '../utils/fileHelper';
@@ -11,6 +11,7 @@ interface InventoryProps {
   setProducts: React.Dispatch<React.SetStateAction<Product[]>>;
   movements: ProductMovement[];
   trackMovement: (productId: string, variantId: string, type: ProductMovement['type'], quantity: number, reason: string) => void;
+  settings?: AppSettings;
 }
 
 const RenderProductIcon = ({ iconName, className }: { iconName: string, className?: string }) => {
@@ -40,7 +41,7 @@ const RenderProductIcon = ({ iconName, className }: { iconName: string, classNam
   );
 };
 
-export default function Inventory({ products, setProducts, movements, trackMovement }: InventoryProps) {
+export default function Inventory({ products, setProducts, movements, trackMovement, settings }: InventoryProps) {
   const [activeTab, setActiveTab] = useState<'ITEMS' | 'WHOLESALE' | 'HISTORY'>('ITEMS');
   const [selectedCat, setSelectedCat] = useState('Tous');
   const [search, setSearch] = useState('');
@@ -260,7 +261,8 @@ export default function Inventory({ products, setProducts, movements, trackMovem
 
   const isLowStock = (product: Product) => {
     const total = product.variants.reduce((sum, v) => sum + v.stock, 0);
-    return total < 5 && total > 0;
+    const threshold = settings?.lowStockThreshold ?? 5;
+    return total < threshold && total > 0;
   };
 
   const isOutOfStock = (product: Product) => {
@@ -480,11 +482,11 @@ export default function Inventory({ products, setProducts, movements, trackMovem
                               {p.variants.map(v => (
                                 <div key={v.id} className="flex items-center justify-between gap-3 border-b border-neutral-50 pb-1">
                                    <span className="text-[8px] font-bold text-neutral-400 uppercase whitespace-nowrap">{v.size} {v.color && `/ ${v.color}`}</span>
-                                   <div className="flex items-center gap-1.5">
-                                      <span className={`text-[10px] font-black ${v.stock <= 0 ? 'text-red-500' : v.stock < 5 ? 'text-orange-600' : 'text-black'}`}>
+                                   <div className="flex items-center gap-1.5 font-mono">
+                                      <span className={`text-[10px] font-black ${v.stock <= 0 ? 'text-red-500' : v.stock < (settings?.lowStockThreshold ?? 5) ? 'text-orange-600' : 'text-black'}`}>
                                         {v.stock}
                                       </span>
-                                      {v.stock < 5 && v.stock > 0 && <ShieldAlert className="w-2.5 h-2.5 text-orange-500" />}
+                                      {v.stock < (settings?.lowStockThreshold ?? 5) && v.stock > 0 && <ShieldAlert className="w-2.5 h-2.5 text-orange-500 animate-pulse" />}
                                    </div>
                                 </div>
                               ))}

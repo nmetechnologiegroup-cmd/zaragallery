@@ -193,4 +193,7 @@ export interface AppSettings {
   welcomeMessageEnabled?: boolean;
   welcomeMessageText?: string;
   isDatabaseSyncEnabled?: boolean;
+  themeColor?: string;
+  darkModeEnabled?: boolean;
+  lowStockThreshold?: number;
 }

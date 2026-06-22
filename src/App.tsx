@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ShoppingCart, Package, BarChart3, Users, Store, LogOut, Wifi, WifiOff, Boxes } from 'lucide-react';
+import { ShoppingCart, Package, BarChart3, Users, Store, LogOut, Wifi, WifiOff, Boxes, X, RefreshCw } from 'lucide-react';
 import POS from './components/POS';
 import Inventory from './components/Inventory';
 import Dashboard from './components/Dashboard';
@@ -15,7 +15,7 @@ import WholesaleManager from './components/WholesaleManager';
 import { INITIAL_PRODUCTS, USERS, INITIAL_PROMOTIONS, INITIAL_CUSTOMERS, INITIAL_SETTINGS } from './data';
 import { Product, Order, User, CashMovement, AuditLogEntry, Customer, Promotion, ProductMovement, ChatMessage, PendingTicket, AppSettings, CashRegisterSession, UserPermissions } from './types';
 import { Wholesaler, WholesaleOrder } from './types_wholesale';
-import { ShieldCheck, Image as ImageIcon, Users2, MessageSquare, Lock as LockIcon, ReceiptText } from 'lucide-react';
+import { ShieldCheck, Image as ImageIcon, Users2, MessageSquare, Lock as LockIcon, ReceiptText, Sun, Moon } from 'lucide-react';
 
 const INITIAL_WHOLESALERS: Wholesaler[] = [
   { id: 'GROS-1', name: 'Omar Sy', companyName: 'Dakar Fripes Gros', phone: '+221 77 555 11 22', email: 'omar@grosfripes.sn', address: 'Grand Yoff, Dakar', balance: 0, creditLimit: 5000000, createdAt: new Date().toISOString() },
@@ -40,6 +40,10 @@ export default function App() {
   const [isSyncing, setIsSyncing] = useState<'IDLE' | 'SYNCING' | 'SAVED'>('IDLE');
   const [serverOnline, setServerOnline] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [showMainTroubleshoot, setShowMainTroubleshoot] = useState(false);
+  const [isPinging, setIsPinging] = useState(false);
+  const [pingStatus, setPingStatus] = useState<'SUCCESS' | 'FAILED' | null>(null);
+  const [isBrowserOnline, setIsBrowserOnline] = useState(navigator.onLine);
   
   // App State
   const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS);
@@ -128,6 +132,37 @@ export default function App() {
 
     fetchData();
   }, []);
+
+  useEffect(() => {
+    const handleOnline = () => setIsBrowserOnline(true);
+    const handleOffline = () => setIsBrowserOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  const handleTestPing = async () => {
+    setIsPinging(true);
+    setPingStatus(null);
+    try {
+      const res = await fetch(`/api/health?t=${Date.now()}`);
+      if (res.ok) {
+        setPingStatus('SUCCESS');
+        setServerOnline(true);
+      } else {
+        setPingStatus('FAILED');
+        setServerOnline(false);
+      }
+    } catch {
+      setPingStatus('FAILED');
+      setServerOnline(false);
+    } finally {
+      setIsPinging(false);
+    }
+  };
 
   const loadFromLocal = () => {
     const saved = localStorage.getItem('zg_local_cache');
@@ -320,6 +355,143 @@ export default function App() {
     return () => clearInterval(interval);
   }, [settings.openingTime, settings.closingTime, settings.autoLockEnabled, settings.manualLock, settings.isPaymentLocked]);
 
+  // Dynamic style injector for customizations
+  useEffect(() => {
+    let styleEl = document.getElementById('dynamic-theme-style');
+    if (!styleEl) {
+      styleEl = document.createElement('style');
+      styleEl.id = 'dynamic-theme-style';
+      document.head.appendChild(styleEl);
+    }
+
+    const tColor = settings.themeColor || 'black';
+    const isDark = !!settings.darkModeEnabled;
+
+    const colors: Record<string, { primary: string; hover: string; text: string }> = {
+      black: { primary: '#000000', hover: '#1e1b18', text: '#ffffff' },
+      emerald: { primary: '#059669', hover: '#047857', text: '#ffffff' },
+      indigo: { primary: '#4f46e5', hover: '#4338ca', text: '#ffffff' },
+      rose: { primary: '#e11d48', hover: '#be123c', text: '#ffffff' },
+      amber: { primary: '#d97706', hover: '#b45309', text: '#ffffff' },
+      blue: { primary: '#2563eb', hover: '#1d4ed8', text: '#ffffff' },
+    };
+
+    const activeColor = colors[tColor] || colors.black;
+
+    let css = `
+      :root {
+        --primary-accent: ${activeColor.primary};
+        --primary-accent-hover: ${activeColor.hover};
+        --primary-accent-text: ${activeColor.text};
+      }
+    `;
+
+    css += `
+      /* ACCENT COLOR OVERRIDES */
+      .bg-indigo-600, .bg-emerald-600, .bg-emerald-700, .bg-emerald-950, .bg-black {
+        background-color: var(--primary-accent) !important;
+        color: var(--primary-accent-text) !important;
+      }
+      .hover\\:bg-emerald-700:hover, .hover\\:bg-black:hover, .hover\\:bg-neutral-900:hover, .hover\\:bg-emerald-800:hover {
+        background-color: var(--primary-accent-hover) !important;
+      }
+      .text-emerald-600, .text-emerald-500, .text-emerald-700 {
+        color: var(--primary-accent) !important;
+      }
+      .border-emerald-600, .border-emerald-500, .border-black {
+        border-color: var(--primary-accent) !important;
+      }
+      .focus\\:border-emerald-600:focus, .focus\\:border-black:focus, .focus\\:border-neutral-900:focus {
+        border-color: var(--primary-accent) !important;
+      }
+    `;
+
+    if (isDark) {
+      css += `
+        /* MODE NUIT OVERRIDES */
+        body {
+          background-color: #0c0a09 !important; /* Stone 950 */
+          color: #f5f5f4 !important; /* Stone 100 */
+        }
+        
+        .bg-white, .bg-neutral-50, .bg-slate-50, .bg-gray-50, .bg-stone-50 {
+          background-color: #1c1917 !important; /* Stone 900 */
+          color: #f5f5f4 !important;
+        }
+
+        .bg-neutral-100, .bg-stone-100, .bg-gray-100, .bg-neutral-50\\/50 {
+          background-color: #292524 !important; /* Stone 800 */
+          color: #f5f5f4 !important;
+        }
+
+        .border-neutral-200, .border-neutral-100, .border-gray-200, .border-stone-200, .border-stone-100 {
+          border-color: #44403c !important; /* Stone 700 */
+        }
+
+        .border-neutral-900, .border-neutral-800, .border-stone-800 {
+          border-color: #44403c !important;
+        }
+
+        .text-neutral-900, .text-neutral-800, .text-black, .text-neutral-700 {
+          color: #fafaf9 !important; /* Stone 50 */
+        }
+
+        .text-neutral-500, .text-neutral-600, .text-gray-500 {
+          color: #a8a29e !important; /* Stone 400 */
+        }
+
+        .text-neutral-400 {
+          color: #78716c !important; /* Stone 500 */
+        }
+
+        input, select, textarea {
+          background-color: #292524 !important;
+          color: #ffffff !important;
+          border-color: #44403c !important;
+        }
+        
+        input::placeholder {
+          color: #78716c !important;
+        }
+
+        .hover\\:bg-neutral-50:hover, .hover\\:bg-neutral-100:hover, .hover\\:bg-stone-50:hover {
+          background-color: #292524 !important;
+        }
+
+        th {
+          background-color: #1a1716 !important;
+          color: #fafaf9 !important;
+          border-color: #44403c !important;
+        }
+        
+        td {
+          border-color: #44403c !important;
+        }
+
+        .shadow-sm, .shadow-md, .shadow-lg, .shadow-xl {
+          box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.4) !important;
+        }
+
+        .bg-neutral-900, .bg-neutral-950 {
+          background-color: #12100f !important;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background-color: #44403c !important;
+        }
+      `;
+    }
+
+    styleEl.innerHTML = css;
+
+    // Also toggle a html / body dark class in case some elements use tailwind dark: selectors
+    if (isDark) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [settings.themeColor, settings.darkModeEnabled]);
+
   const addAuditLog = (action: string, details: string, severity: AuditLogEntry['severity'] = 'INFO') => {
     const newLog: AuditLogEntry = {
       id: `LOG-${Date.now()}`,
@@ -381,7 +553,7 @@ export default function App() {
       setCurrentUser(user);
       sessionStorage.setItem('zg_logged_in_user', user.id);
       addAuditLog('USER_LOGIN', `Connexion de ${user.name} (${user.role})`);
-    }} users={users} settings={settings} />;
+    }} users={users} settings={settings} serverOnline={serverOnline} />;
   }
 
   const isAdmin = currentUser.role === 'ADMIN';
@@ -479,18 +651,45 @@ export default function App() {
         </div>
         
         {/* User Session Info */}
-        <div className="px-4 lg:px-8 py-6 border-b border-neutral-900 flex items-center justify-center lg:justify-between">
-           <div className="hidden lg:block">
+        <div className="px-4 lg:px-6 py-6 border-b border-neutral-900 flex flex-col items-center lg:items-start gap-4">
+           <div className="hidden lg:block w-full">
              <p className="text-neutral-500 text-[10px] uppercase font-bold tracking-widest mb-1">Employé Actif</p>
-             <p className="text-white font-medium truncate pr-2 tracking-tight overflow-hidden w-40" title={currentUser.name}>{currentUser.name}</p>
+             <p className="text-white font-medium truncate tracking-tight w-full" title={currentUser.name}>{currentUser.name}</p>
              <p className="text-zinc-500 text-[9px] mt-0.5 font-black tracking-widest uppercase">{currentUser.role} </p>
            </div>
-           <div className="flex gap-2">
-             <button onClick={() => setIsChatOpen(true)} className="p-3 bg-neutral-900 hover:bg-neutral-800 text-neutral-400 hover:text-white rounded-lg transition-colors border border-neutral-800 relative">
+           
+           <div className="flex items-center gap-2 w-full justify-center lg:justify-start">
+             <button 
+               id="theme-toggle"
+               onClick={() => {
+                 setSettings(prev => ({
+                   ...prev,
+                   darkModeEnabled: !prev.darkModeEnabled
+                 }));
+                 addAuditLog(
+                   settings?.darkModeEnabled ? 'MODE_NUIT_DESACTIVE' : 'MODE_NUIT_ACTIVE',
+                   `Mode Nuit Haute Retenue ${settings?.darkModeEnabled ? 'désactivé' : 'activé'} manuellement.`
+                 );
+               }} 
+               className={`p-3 rounded-lg transition-colors border flex items-center justify-center ${settings?.darkModeEnabled ? 'bg-amber-950/40 text-amber-500 border-amber-900/50 hover:bg-amber-900/65' : 'bg-neutral-900 hover:bg-neutral-800 text-neutral-400 hover:text-white border-neutral-800'}`}
+               title={settings?.darkModeEnabled ? "Activer Mode Jour" : "Activer Mode Nuit Haute Retenue"}
+             >
+               {settings?.darkModeEnabled ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+             </button>
+             <button 
+               id="chat-toggle"
+               onClick={() => setIsChatOpen(true)} 
+               className="p-3 bg-neutral-900 hover:bg-neutral-800 text-neutral-400 hover:text-white rounded-lg transition-colors border border-neutral-800 relative flex items-center justify-center"
+             >
                <MessageSquare className="w-4 h-4" />
                <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
              </button>
-             <button onClick={handleLogout} className="p-3 bg-neutral-900 hover:bg-neutral-800 text-neutral-400 hover:text-white rounded-lg transition-colors border border-neutral-800" title="Quitter Session">
+             <button 
+               id="logout-btn"
+               onClick={handleLogout} 
+               className="p-3 bg-neutral-900 hover:bg-neutral-800 text-neutral-400 hover:text-white rounded-lg transition-colors border border-neutral-800 flex items-center justify-center lg:ml-auto" 
+               title="Quitter Session"
+             >
                <LogOut className="w-4 h-4" />
              </button>
            </div>
@@ -560,15 +759,20 @@ export default function App() {
           </div>
         </nav>
         
-        <div className="p-5 hidden lg:block">
-          <div className="bg-neutral-950 border border-neutral-900 p-4 text-[9px] text-neutral-600 uppercase tracking-widest text-center flex flex-col gap-2">
+        <div className="p-5 hidden lg:block animate-in slide-in-from-bottom duration-300">
+          <div 
+            onClick={() => setShowMainTroubleshoot(true)}
+            title="Cliquez pour les diagnostics de connexion..."
+            className="bg-neutral-950 border border-neutral-900 hover:border-neutral-700 p-3 text-[9px] text-neutral-500 hover:text-neutral-300 uppercase tracking-widest text-center flex flex-col gap-2 cursor-pointer transition-all active:scale-[0.98]"
+          >
              <div className="flex items-center justify-center gap-2">
-               {serverOnline ? <Wifi className="w-3 h-3 text-green-500" /> : <WifiOff className="w-3 h-3 text-red-500" />}
+               {serverOnline ? <Wifi className="w-3 h-3 text-green-500" /> : <WifiOff className="w-3 h-3 text-red-500 animate-pulse" />}
                <span className={`${serverOnline ? 'text-green-500' : 'text-red-500'} font-black`}>
-                 {serverOnline ? 'SYNC OK' : 'LOCAL CACHE'}
+                 {serverOnline ? 'SYNC OK' : 'LOCAL CACHE (OFFLINE)'}
                </span>
                {isSyncing === 'SYNCING' && <div className="w-1 h-1 bg-white rounded-full animate-ping"></div>}
              </div>
+             <span className="underline text-[8px] tracking-[0.1em] text-neutral-400 hover:text-white font-mono flex items-center justify-center gap-1">Aide Connexion 💡</span>
              <span>© 2026 ZARA GALLERY</span>
           </div>
         </div>
@@ -619,7 +823,7 @@ export default function App() {
             }}
           />
         )}
-        {activeTab === 'inventory' && hasAppAccess('canViewInventory', isManager) && <Inventory products={products} setProducts={setProductsFromInventory} movements={stockMovements} trackMovement={trackStockMovement} />}
+        {activeTab === 'inventory' && hasAppAccess('canViewInventory', isManager) && <Inventory products={products} setProducts={setProductsFromInventory} movements={stockMovements} trackMovement={trackStockMovement} settings={settings} />}
         {activeTab === 'wholesale' && hasAppAccess('canViewWholesale', isManager) && (
           <WholesaleManager 
             products={products}
@@ -704,6 +908,121 @@ export default function App() {
         {activeTab === 'history' && <SalesHistory orders={orders} wholesaleOrders={wholesaleOrders} wholesalers={wholesalers} currentUser={currentUser} users={users} settings={settings} />}
         
         <Chat isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} messages={messages} setMessages={setMessagesFromChat} currentUser={currentUser} users={users} />
+
+        {/* Collapsible Connection troubleshooting dialog popup inside App */}
+        {showMainTroubleshoot && (
+          <div className="fixed inset-0 bg-black/75 backdrop-blur-md z-[9999] flex items-center justify-center p-4">
+            <div className="bg-neutral-900 border border-neutral-800 text-white rounded-none p-6 md:p-8 max-w-lg w-full shadow-2xl relative animate-in slide-in-from-bottom duration-300">
+              <button 
+                onClick={() => setShowMainTroubleshoot(false)}
+                className="absolute top-4 right-4 text-neutral-400 hover:text-white transition-all"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              <div className="flex items-center gap-3 mb-5 border-b border-neutral-800 pb-4">
+                <div className={`p-2 rounded ${serverOnline ? 'bg-emerald-950 text-emerald-400' : 'bg-red-950 text-red-400'}`}>
+                  {serverOnline ? <Wifi className="w-6 h-6 animate-pulse" /> : <WifiOff className="w-6 h-6 animate-bounce" />}
+                </div>
+                <div>
+                  <h3 className="text-xs font-black tracking-[0.2em] uppercase text-neutral-400">Assistant de Connectivité</h3>
+                  <h2 className="text-lg font-black uppercase text-white tracking-tight">
+                    {serverOnline ? 'Système Connecté au Réseau' : 'Diagnostic de Panne Internet'}
+                  </h2>
+                </div>
+              </div>
+
+              <div className="space-y-4 text-xs">
+                <div className="bg-black/50 p-4 border border-neutral-800 rounded space-y-2">
+                  <span className="text-[9px] font-black tracking-widest text-neutral-500 uppercase block">Statut Actuel :</span>
+                  <div className="grid grid-cols-2 gap-2 font-mono text-[10px] uppercase">
+                    <div className="flex items-center gap-1.5">
+                      <span className={`w-2 h-2 rounded-full ${isBrowserOnline ? 'bg-emerald-400' : 'bg-red-500'}`} />
+                      <span>Navigateur: {isBrowserOnline ? 'EN LIGNE' : 'HORS-LIGNE'}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className={`w-2 h-2 rounded-full ${serverOnline ? 'bg-emerald-400' : 'bg-red-500'}`} />
+                      <span>Serveur SQL: {serverOnline ? 'CONNECTÉ' : 'DÉCONNECTÉ'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <h4 className="font-bold text-amber-400 uppercase tracking-widest text-[9px]">
+                    💡 SOLUTIONS &amp; PROPOSITIONS EN CAS DE PROBLÈME :
+                  </h4>
+                  
+                  <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
+                    <div className="flex gap-2.5 items-start">
+                      <div className="w-5 h-5 bg-neutral-800 rounded flex items-center justify-center font-bold text-[10px] shrink-0 text-white mt-0.5">1</div>
+                      <p className="text-neutral-300 leading-relaxed">
+                        <strong className="text-white uppercase tracking-wider">Vérifiez le Routeur Wi-Fi de la Boutique</strong><br />
+                        Assurez-vous que votre périphérique (PC ou Tablette) est bien connecté au bon point d'accès Wi-Fi et que d'autres sites web sont accessibles.
+                      </p>
+                    </div>
+
+                    <div className="flex gap-2.5 items-start">
+                      <div className="w-5 h-5 bg-neutral-800 rounded flex items-center justify-center font-bold text-[10px] shrink-0 text-white mt-0.5">2</div>
+                      <p className="text-neutral-300 leading-relaxed">
+                        <strong className="text-white uppercase tracking-wider">Fonctionnalité en Cache Local Double Sécurisé</strong><br />
+                        Toutes vos ventes et actions s'enregistrent en instantané localement grâce au stockage interne. Vos reçus, clients, et mouvements de caisse sont à l'abri et se synchroniseront automatiquement dès retour d'internet.
+                      </p>
+                    </div>
+
+                    <div className="flex gap-2.5 items-start">
+                      <div className="w-5 h-5 bg-neutral-800 rounded flex items-center justify-center font-bold text-[10px] shrink-0 text-white mt-0.5">3</div>
+                      <p className="text-neutral-300 leading-relaxed">
+                        <strong className="text-white uppercase tracking-wider">Désactivation de la Synergie MariaDB</strong><br />
+                        Si la base de données distante est lente, accédez à la section <strong className="text-white">Gestion Équipe (Onglet Paramètres)</strong> pour désactiver l'écriture directe SQL et travailler en cache local rapide.
+                      </p>
+                    </div>
+
+                    <div className="flex gap-2.5 items-start">
+                      <div className="w-5 h-5 bg-neutral-800 rounded flex items-center justify-center font-bold text-[10px] shrink-0 text-white mt-0.5">4</div>
+                      <p className="text-neutral-300 leading-relaxed">
+                        <strong className="text-white uppercase tracking-wider">Faire un test de Reconnexion</strong><br />
+                        Vous pouvez relancer manuellement un test de communication avec le serveur principal en cliquant ci-dessous.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border-t border-neutral-800 pt-4 flex gap-4">
+                  <button
+                    type="button"
+                    onClick={handleTestPing}
+                    disabled={isPinging}
+                    className="flex-1 bg-white hover:bg-neutral-200 text-black py-2.5 font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-2 transition-all cursor-pointer"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isPinging ? 'animate-spin' : ''}`} />
+                    {isPinging ? 'Test en cours...' : 'Tester la Liaison'}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowMainTroubleshoot(false)}
+                    className="bg-neutral-800 hover:bg-neutral-700 text-neutral-300 px-5 py-2.5 font-black uppercase text-[10px] tracking-widest transition-all cursor-pointer"
+                  >
+                    Fermer
+                  </button>
+                </div>
+
+                {pingStatus && (
+                  <div className={`p-3 border text-center font-mono text-[10px] uppercase animate-in zoom-in duration-200 ${
+                    pingStatus === 'SUCCESS' 
+                      ? 'bg-emerald-950/40 border-emerald-800 text-emerald-400' 
+                      : 'bg-red-950/40 border-red-900 text-red-400'
+                  }`}>
+                    {pingStatus === 'SUCCESS' 
+                      ? '✓ Succès : Liaison serveur raccordée !' 
+                      : '✗ Échec : Le serveur est injoignable.'}
+                  </div>
+                )}
+
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );

@@ -20,7 +20,10 @@ export const INITIAL_SETTINGS: AppSettings = {
   storePhone: '+226 25 30 00 00',
   welcomeMessageEnabled: true,
   welcomeMessageText: 'QUE CETTE JOURNEE SOIT COURONNER DE SUCCES CE MESSAGE EST EDITER PAR L ADMIN',
-  isDatabaseSyncEnabled: true
+  isDatabaseSyncEnabled: true,
+  themeColor: 'black',
+  darkModeEnabled: false,
+  lowStockThreshold: 5
 };
 
 export const INITIAL_PROMOTIONS: Promotion[] = [

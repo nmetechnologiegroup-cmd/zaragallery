@@ -2030,6 +2030,18 @@ async function startServer() {
     }
   });
 
+  // Get database engine status
+  app.get('/api/db/status', (req, res) => {
+    res.json({
+      useMariaDB: !!useMariaDB,
+      activeDb: useMariaDB ? 'MariaDB' : 'SQLite',
+      connected: true,
+      sqlitePath: SQLITE_DB_FILE,
+      mariadbHost: process.env.DB_HOST || '127.0.0.1',
+      mariadbDatabase: process.env.DB_NAME || 'zara'
+    });
+  });
+
   // Health check for local network clients
   app.get('/api/health', (req, res) => {
     res.json({ status: 'running', serverTime: new Date().toISOString(), mode: 'local-offline' });

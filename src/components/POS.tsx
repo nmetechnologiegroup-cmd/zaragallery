@@ -954,11 +954,15 @@ export default function POS({
                  {settings?.logoUrl ? (
                    <img src={settings.logoUrl} alt="Logo" className="max-h-16 w-auto object-contain mb-3" referrerPolicy="no-referrer" />
                  ) : null}
-                 <h1 className="text-3xl font-black uppercase tracking-tighter break-all">{settings?.storeName || 'ZARA'}</h1>
-                 {settings?.storeAddress ? (
-                   <p className="text-[9px] uppercase font-bold text-neutral-500 mt-1 text-center max-w-[250px] leading-relaxed">{settings.storeAddress}</p>
-                 ) : (
-                   <p className="text-[10px] tracking-[0.4em] uppercase font-bold text-neutral-400 mt-1">{settings?.storeAddress || 'ZARA GALLERY • Ouagadougou'}</p>
+                 {settings?.storeName !== "" && (
+                   <h1 className="text-3xl font-black uppercase tracking-tighter break-all">
+                     {settings?.storeName ?? 'ZARA'}
+                   </h1>
+                 )}
+                 {settings?.storeAddress !== "" && (
+                   <p className="text-[9px] uppercase font-bold text-neutral-500 mt-1 text-center max-w-[250px] leading-relaxed">
+                     {settings?.storeAddress ?? 'ZARA GALLERY • Ouagadougou'}
+                   </p>
                  )}
                  {settings?.storePhone && (
                     <p className="text-[9px] font-bold text-neutral-500 mt-0.5">Tél: {settings.storePhone}</p>

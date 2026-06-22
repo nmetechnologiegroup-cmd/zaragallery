@@ -1,14 +1,28 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { User, AppSettings } from '../types';
-import { Lock as LockIcon, AlertCircle, ChevronDown, User as UserIcon, Sparkles } from 'lucide-react';
+import { 
+  Lock as LockIcon, 
+  AlertCircle, 
+  ChevronDown, 
+  User as UserIcon, 
+  Sparkles,
+  Wifi,
+  WifiOff,
+  Activity,
+  Info,
+  RefreshCw,
+  CheckCircle2,
+  X
+} from 'lucide-react';
 
 interface LoginProps {
   onLogin: (u: User) => void;
   users: User[];
   settings?: AppSettings;
+  serverOnline?: boolean;
 }
 
-export default function Login({ onLogin, users, settings }: LoginProps) {
+export default function Login({ onLogin, users, settings, serverOnline }: LoginProps) {
   const [username, setUsername] = useState('');
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [pin, setPin] = useState('');
@@ -17,6 +31,49 @@ export default function Login({ onLogin, users, settings }: LoginProps) {
   // Welcome Modal states
   const [showWelcomeModal, setShowWelcomeModal] = useState(false);
   const [validatedUser, setValidatedUser] = useState<User | null>(null);
+
+  // Network Troubleshoot states
+  const [isBrowserOnline, setIsBrowserOnline] = useState(navigator.onLine);
+  const [showTroubleshoot, setShowTroubleshoot] = useState(false);
+  const [isPinging, setIsPinging] = useState(false);
+  const [pingStatus, setPingStatus] = useState<'SUCCESS' | 'FAILED' | null>(null);
+
+  useEffect(() => {
+    const handleOnline = () => setIsBrowserOnline(true);
+    const handleOffline = () => setIsBrowserOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  const handleTestPing = async () => {
+    setIsPinging(true);
+    setPingStatus(null);
+    try {
+      const res = await fetch(`/api/health?t=${Date.now()}`);
+      if (res.ok) {
+        setPingStatus('SUCCESS');
+      } else {
+        setPingStatus('FAILED');
+      }
+    } catch {
+      setPingStatus('FAILED');
+    } finally {
+      setIsPinging(false);
+    }
+  };
+
+  const isWelcomeEnabled = settings?.welcomeMessageEnabled ?? true;
+  const hasWelcomeText = settings && settings.welcomeMessageText !== undefined 
+    ? settings.welcomeMessageText.trim().length > 0 
+    : true; // Default fallback is active if settings is not initialized yet
+
+  const finalWelcomeText = settings && settings.welcomeMessageText !== undefined
+    ? settings.welcomeMessageText.trim()
+    : 'QUE CETTE JOURNEE SOIT COURONNER DE SUCCES CE MESSAGE EST EDITER PAR L ADMIN';
 
   const handleSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -45,9 +102,8 @@ export default function Login({ onLogin, users, settings }: LoginProps) {
 
       setValidatedUser(user);
       
-      // Check if welcome message is enabled
-      const isWelcomeEnabled = settings?.welcomeMessageEnabled ?? true;
-      if (isWelcomeEnabled) {
+      // If welcome message is checked and not blanked/cleared
+      if (isWelcomeEnabled && hasWelcomeText) {
         setShowWelcomeModal(true);
       } else {
         onLogin(user);
@@ -85,8 +141,7 @@ export default function Login({ onLogin, users, settings }: LoginProps) {
                 return;
               }
               setValidatedUser(user);
-              const isWelcomeEnabled = settings?.welcomeMessageEnabled ?? true;
-              if (isWelcomeEnabled) {
+              if (isWelcomeEnabled && hasWelcomeText) {
                 setShowWelcomeModal(true);
               } else {
                 onLogin(user);
@@ -109,8 +164,10 @@ export default function Login({ onLogin, users, settings }: LoginProps) {
   // Filter active users to list in suggestion dropdown
   const activeUsers = users.filter(u => u.isActive !== false);
 
+  const displayOnline = serverOnline ?? isBrowserOnline;
+
   return (
-    <div className="min-h-screen bg-neutral-50 flex flex-col items-center justify-start p-4 md:p-8 font-sans tracking-tight focus:outline-none overflow-y-auto py-12 md:py-24">
+    <div className="min-h-screen bg-neutral-50 flex flex-col items-center justify-start p-4 md:p-8 font-sans tracking-tight focus:outline-none overflow-y-auto py-12 md:py-24 relative">
       
       {/* Sleek, ultra-compact luxury card */}
       <div className="w-full max-w-sm bg-white border border-neutral-200/80 overflow-hidden flex-shrink-0 shadow-[0_40px_100px_-20px_rgba(0,0,0,0.1)]">
@@ -119,16 +176,27 @@ export default function Login({ onLogin, users, settings }: LoginProps) {
            {settings?.logoUrl ? (
              <img src={settings.logoUrl} alt="Logo" className="max-h-24 md:max-h-32 w-auto object-contain mb-4" referrerPolicy="no-referrer" />
            ) : null}
-           <h1 className="text-2xl md:text-3xl font-black uppercase tracking-tighter break-all text-neutral-900 leading-none">
-             {settings?.storeName || 'ZARA'}
-           </h1>
-           <p className="font-semibold text-[8px] md:text-[9px] tracking-[0.25em] text-neutral-400 uppercase mt-2 mb-4 md:mb-6 text-center max-w-[200px] leading-normal line-clamp-2">
-             {settings?.storeAddress || 'ZARA GALLERY • Ouagadougou'}
-           </p>
            
-           <h2 className="text-neutral-500 font-black tracking-[0.15em] text-[8px] uppercase flex justify-center items-center gap-2 opacity-90">
-             AUTHENTIFICATION SÉCURISÉE
-           </h2>
+           {/* Store Name - Hidden completely if explicitly erased by admin to "" */}
+           {settings?.storeName !== "" && (
+             <h1 className="text-2xl md:text-3xl font-black uppercase tracking-tighter break-all text-neutral-900 leading-none">
+               {settings?.storeName ?? 'ZARA'}
+             </h1>
+           )}
+
+           {/* Store Address - Hidden completely if explicitly erased by admin to "" */}
+           {settings?.storeAddress !== "" && (
+             <p className="font-semibold text-[8px] md:text-[9px] tracking-[0.25em] text-neutral-400 uppercase mt-2 mb-4 md:mb-6 text-center max-w-[200px] leading-normal line-clamp-2">
+               {settings?.storeAddress ?? 'ZARA GALLERY • Ouagadougou'}
+             </p>
+           )}
+           
+           {/* Authentification Sécurisée - Hidden completely if both storeName and storeAddress are empty strings "" */}
+           {!(settings?.storeName === "" && settings?.storeAddress === "") && (
+             <h2 className="text-neutral-500 font-black tracking-[0.15em] text-[8px] uppercase flex justify-center items-center gap-2 opacity-90">
+               AUTHENTIFICATION SÉCURISÉE
+             </h2>
+           )}
         </div>
 
         <form onSubmit={handleSubmit} className="px-6 md:px-8 pt-6">
@@ -237,8 +305,23 @@ export default function Login({ onLogin, users, settings }: LoginProps) {
           </div>
         </div>
 
-        <div className="bg-neutral-50 py-4 text-center border-t border-neutral-100 flex flex-col gap-1 justify-center text-[8px] font-mono text-neutral-400">
+        <div className="bg-neutral-50 py-4 text-center border-t border-neutral-100 flex flex-col gap-1.5 justify-center text-[8px] font-mono text-neutral-400">
            <span className="text-[7px] tracking-[0.2em] font-sans text-neutral-300 font-bold">TERMINAL POS V4.2</span>
+           
+           {/* Beautiful micro-connectivity monitor on the card itself */}
+           <div className="flex items-center justify-center gap-1.5 pt-0.5">
+             <div className={`w-1.5 h-1.5 rounded-full ${displayOnline ? 'bg-emerald-500 animate-pulse' : 'bg-red-500 animate-pulse'}`} />
+             <span className={`text-[8px] font-black uppercase tracking-widest ${displayOnline ? 'text-emerald-600' : 'text-red-500'}`}>
+               {displayOnline ? 'SERVEUR EN LIGNE' : 'MODE HORS-LIGNE'}
+             </span>
+             <button 
+               type="button" 
+               onClick={() => setShowTroubleshoot(true)}
+               className="ml-1.5 underline hover:text-neutral-600 text-[8px] font-bold tracking-widest uppercase cursor-pointer"
+             >
+               Diagnostics 💡
+             </button>
+           </div>
         </div>
 
       </div>
@@ -261,11 +344,14 @@ export default function Login({ onLogin, users, settings }: LoginProps) {
               BIENVENUE, {validatedUser.name} !
             </h2>
 
-            <div className="bg-neutral-50 border border-neutral-100 p-5 mb-6">
-              <p className="text-[11px] font-bold text-neutral-800 uppercase tracking-wider leading-relaxed italic">
-                "{settings?.welcomeMessageText || 'QUE CETTE JOURNEE SOIT COURONNER DE SUCCES CE MESSAGE EST EDITER PAR L ADMIN'}"
-              </p>
-            </div>
+            {/* CONDITIONAL GREY CONTAINER (Disappears fully if welcomeMessageText was cleared/empty) */}
+            {hasWelcomeText && finalWelcomeText ? (
+              <div className="bg-neutral-50 border border-neutral-100 p-5 mb-6">
+                <p className="text-[11px] font-bold text-neutral-800 uppercase tracking-wider leading-relaxed italic">
+                  "{finalWelcomeText}"
+                </p>
+              </div>
+            ) : null}
 
             <div className="border-t border-neutral-100 pt-4 mb-6 flex justify-around text-left">
               <div>
@@ -287,6 +373,123 @@ export default function Login({ onLogin, users, settings }: LoginProps) {
           </div>
         </div>
       )}
+
+      {/* Collapsible Connection troubleshooting dialog popup */}
+      {showTroubleshoot && (
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-neutral-900 border border-neutral-800 text-white rounded-none p-6 md:p-8 max-w-lg w-full shadow-2xl relative animate-in slide-in-from-bottom duration-300">
+            <button 
+              onClick={() => setShowTroubleshoot(false)}
+              className="absolute top-4 right-4 text-neutral-400 hover:text-white transition-all"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-5 border-b border-neutral-800 pb-4">
+              <div className={`p-2 rounded ${displayOnline ? 'bg-emerald-950 text-emerald-400' : 'bg-red-950 text-red-400'}`}>
+                {displayOnline ? <Wifi className="w-6 h-6 animate-pulse" /> : <WifiOff className="w-6 h-6 animate-bounce" />}
+              </div>
+              <div>
+                <h3 className="text-xs font-black tracking-[0.2em] uppercase text-neutral-400">Assistant de Connectivité</h3>
+                <h2 className="text-lg font-black uppercase text-white tracking-tight">
+                  {displayOnline ? 'Système Connecté au Réseau' : 'Diagnostic de Panne Internet'}
+                </h2>
+              </div>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              <div className="bg-black/50 p-4 border border-neutral-800 rounded space-y-2">
+                <span className="text-[9px] font-black tracking-widest text-neutral-500 uppercase block">Statut Actuel :</span>
+                <div className="grid grid-cols-2 gap-2 font-mono text-[10px] uppercase">
+                  <div className="flex items-center gap-1.5">
+                    <span className={`w-2 h-2 rounded-full ${isBrowserOnline ? 'bg-emerald-400' : 'bg-red-500'}`} />
+                    <span>Navigateur: {isBrowserOnline ? 'EN LIGNE' : 'HORS-LIGNE'}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className={`w-2 h-2 rounded-full ${serverOnline ? 'bg-emerald-400' : 'bg-red-500'}`} />
+                    <span>Serveur SQL: {serverOnline ? 'CONNECTÉ' : 'DÉCONNECTÉ'}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <h4 className="font-bold text-amber-400 uppercase tracking-widest text-[9px]">
+                  💡 SOLUTIONS &amp; PROPOSITIONS EN CAS DE PROBLÈME :
+                </h4>
+                
+                <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
+                  <div className="flex gap-2.5 items-start">
+                    <div className="w-5 h-5 bg-neutral-800 rounded flex items-center justify-center font-bold text-[10px] shrink-0 text-white mt-0.5">1</div>
+                    <p className="text-neutral-300 leading-relaxed">
+                      <strong className="text-white uppercase tracking-wider">Vérifiez le Routeur Wi-Fi / Données Mobiles</strong><br />
+                      Assurez-vous que votre appareil est correctement connecté au Wi-Fi de la boutique ou dispose d'un forfait internet 4G/5G actif.
+                    </p>
+                  </div>
+
+                  <div className="flex gap-2.5 items-start">
+                    <div className="w-5 h-5 bg-neutral-800 rounded flex items-center justify-center font-bold text-[10px] shrink-0 text-white mt-0.5">2</div>
+                    <p className="text-neutral-300 leading-relaxed">
+                      <strong className="text-white uppercase tracking-wider">Fonctionnalité en Cache Local Double Sécurisé</strong><br />
+                      L'application intègre une architecture résiliente ! Si le serveur est injoignable, <strong>toutes vos opérations actuelles continuent de fonctionner sans interruption</strong> en local. Les tickets se synchroniseront automatiquement dès reprise du réseau.
+                    </p>
+                  </div>
+
+                  <div className="flex gap-2.5 items-start">
+                    <div className="w-5 h-5 bg-neutral-800 rounded flex items-center justify-center font-bold text-[10px] shrink-0 text-white mt-0.5">3</div>
+                    <p className="text-neutral-300 leading-relaxed">
+                      <strong className="text-white uppercase tracking-wider">Désactivation de la Synergie MariaDB</strong><br />
+                      Si la connexion internet est lente mais pas totalement coupée, les pings SQL peuvent ralentir l'interface. <strong className="text-white">L'administrateur peut décocher "Synchronisation Relationnelle SQL"</strong> dans l'onglet <strong>Gestion Équipe</strong> pour stabiliser l'application.
+                    </p>
+                  </div>
+
+                  <div className="flex gap-2.5 items-start">
+                    <div className="w-5 h-5 bg-neutral-800 rounded flex items-center justify-center font-bold text-[10px] shrink-0 text-white mt-0.5">4</div>
+                    <p className="text-neutral-300 leading-relaxed">
+                      <strong className="text-white uppercase tracking-wider">Rafraîchir après reconnexion physique</strong><br />
+                      Après avoir rebranché votre connexion, utilisez notre utilitaire de ping ou rechargez complètement la page.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="border-t border-neutral-800 pt-4 flex gap-4">
+                <button
+                  type="button"
+                  onClick={handleTestPing}
+                  disabled={isPinging}
+                  className="flex-1 bg-white hover:bg-neutral-200 text-black py-2.5 font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-2 transition-all cursor-pointer"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isPinging ? 'animate-spin' : ''}`} />
+                  {isPinging ? 'Test en cours...' : 'Tester le Serveur'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowTroubleshoot(false)}
+                  className="bg-neutral-800 hover:bg-neutral-700 text-neutral-300 px-5 py-2.5 font-black uppercase text-[10px] tracking-widest transition-all cursor-pointer"
+                >
+                  Fermer
+                </button>
+              </div>
+
+              {pingStatus && (
+                <div className={`p-3 border text-center font-mono text-[10px] uppercase animate-in zoom-in duration-200 ${
+                  pingStatus === 'SUCCESS' 
+                    ? 'bg-emerald-950/40 border-emerald-800 text-emerald-400' 
+                    : 'bg-red-950/40 border-red-900 text-red-400'
+                }`}>
+                  {pingStatus === 'SUCCESS' 
+                    ? '✓ Succès : Connexion avec le serveur rétablie !' 
+                    : '✗ Échec : Le serveur reste injoignable.'}
+                </div>
+              )}
+
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
+

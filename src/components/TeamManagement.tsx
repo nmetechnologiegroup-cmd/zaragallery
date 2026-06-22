@@ -128,6 +128,23 @@ export default function TeamManagement({
   const [purgePin, setPurgePin] = useState("");
   const [purgeError, setPurgeError] = useState("");
 
+  // Database engine live status
+  const [dbStatus, setDbStatus] = useState<{
+    useMariaDB: boolean;
+    activeDb: 'MariaDB' | 'SQLite';
+    connected: boolean;
+    sqlitePath?: string;
+    mariadbHost?: string;
+    mariadbDatabase?: string;
+  } | null>(null);
+
+  useEffect(() => {
+    fetch('/api/db/status')
+      .then(res => res.json())
+      .then(data => setDbStatus(data))
+      .catch(err => console.error('Failed to load db status', err));
+  }, []);
+
   // Handle Seeding of Demo Data
   const handleSeedDemoData = () => {
     if (
@@ -1410,6 +1427,94 @@ export default function TeamManagement({
                     </div>
                   </div>
 
+                  {/* PERSONNALISATION APPARENCE & ALERTE */}
+                  <div className="pt-4 border-t border-neutral-800 space-y-4">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-amber-500">
+                      Personnalisation & Alertes
+                    </p>
+
+                    {/* Mode Nuit / Mode Sombre */}
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-white">
+                          🌙 Mode Nuit (Sombre)
+                        </p>
+                        <p className="text-[9px] text-neutral-500 font-bold uppercase mt-1">
+                          Activer l'interface sombre reposante pour la boutique
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateSettings({
+                            darkModeEnabled: !(localSettings.darkModeEnabled ?? false),
+                          })
+                        }
+                        className={`w-14 h-7 rounded-sm transition-all relative ${
+                          (localSettings.darkModeEnabled ?? false) ? "bg-amber-500" : "bg-neutral-800 border border-neutral-700"
+                        }`}
+                      >
+                        <div
+                          className={`w-5 h-5 absolute top-1 transition-all rounded-xs ${
+                            (localSettings.darkModeEnabled ?? false) ? "bg-black right-1" : "bg-neutral-500 left-1"
+                          }`}
+                        />
+                      </button>
+                    </div>
+
+                    {/* Palette de Couleur */}
+                    <div>
+                      <p className="text-[9px] font-black text-neutral-400 uppercase tracking-widest mb-1.5">
+                        🎨 Couleur de l'application (Accents)
+                      </p>
+                      <div className="flex flex-wrap gap-2.5 mt-2">
+                        {[
+                          { id: 'black', label: 'Zara Noir', color: 'bg-black text-white border-neutral-500' },
+                          { id: 'emerald', label: 'Émeraude', color: 'bg-emerald-600 text-white' },
+                          { id: 'indigo', label: 'Indigo', color: 'bg-indigo-600 text-white' },
+                          { id: 'rose', label: 'Rose Opulent', color: 'bg-rose-600 text-white' },
+                          { id: 'amber', label: 'Or Ambré', color: 'bg-amber-500 text-black' },
+                          { id: 'blue', label: 'Bleu Royal', color: 'bg-blue-600 text-white' },
+                        ].map((p) => (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => updateSettings({ themeColor: p.id })}
+                            className={`px-3 py-1.5 text-[8px] font-black uppercase tracking-wider transition-all border ${
+                              (localSettings.themeColor || 'black') === p.id 
+                                ? 'border-white scale-105 shadow-md font-bold' 
+                                : 'border-neutral-800 hover:border-neutral-500 hover:scale-102'
+                            } ${p.color}`}
+                          >
+                            {p.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Stock critique */}
+                    <div className="pt-2">
+                      <p className="text-[9px] font-black text-neutral-400 uppercase tracking-widest mb-1.5">
+                        ⚠️ Seuil Critique d'Alerte de Stock
+                      </p>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="number"
+                          min={1}
+                          max={50}
+                          value={localSettings.lowStockThreshold ?? 5}
+                          onChange={(e) =>
+                            updateSettings({ lowStockThreshold: parseInt(e.target.value) || 5 })
+                          }
+                          className="w-24 bg-neutral-800 border border-neutral-700 p-2.5 text-xs font-black uppercase tracking-widest outline-none focus:border-white text-white"
+                        />
+                        <span className="text-[9px] text-neutral-500 font-bold uppercase col-span-2">
+                          Articles restants (Vente et inventaire signaleront en critique sous ce nombre)
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="grid grid-cols-2 gap-4 pt-2">
                     <div>
                       <p className="text-[9px] font-black text-neutral-500 uppercase tracking-widest mb-1">
@@ -1550,16 +1655,40 @@ export default function TeamManagement({
                 </div>
               </div>
 
-              <div className="p-6 border border-neutral-200 bg-neutral-50 rounded-sm">
-                <p className="text-[9px] font-black uppercase text-neutral-400 tracking-widest mb-1">
-                  Architecture du Système
-                </p>
-                <p className="text-[10px] text-neutral-500 tracking-tight leading-relaxed">
-                  Le système utilise une base de données locale sécurisée
-                  (SQLite) qui synchronise toutes les données. Les exportations
-                  JSON assurent la portabilité, et les imports remplacent l'état
-                  Cloud.
-                </p>
+              <div className="p-6 border border-neutral-200 bg-neutral-50 rounded-sm space-y-4">
+                <div>
+                  <p className="text-[9px] font-black uppercase text-neutral-400 tracking-widest mb-1">
+                    Moteur de Base de Données Actif
+                  </p>
+                  <div className="flex items-center gap-2 mt-2">
+                    <span className="relative flex h-3.5 w-3.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-emerald-500"></span>
+                    </span>
+                    <span className="text-sm font-black uppercase tracking-tight text-neutral-900">
+                      {dbStatus?.activeDb || 'SQLite'} Engine
+                    </span>
+                  </div>
+                </div>
+
+                {dbStatus?.useMariaDB ? (
+                  <div className="bg-emerald-50/50 p-4 border border-emerald-100 rounded-sm space-y-1.5 text-[10px] text-emerald-800">
+                    <p className="font-black uppercase tracking-wider text-[9px]">Liaison MariaDB Connectée :</p>
+                    <p className="font-mono">IP / Hôte : {dbStatus.mariadbHost}</p>
+                    <p className="font-mono">Base cible : {dbStatus.mariadbDatabase}</p>
+                    <p className="text-[9.5px] leading-relaxed text-neutral-500 font-medium pt-1">
+                      Les écritures transactionnelles sont répliquées en temps réel sur les tables individuelles optimisées MariaDB pour l'harmonisation complète de l'application.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="bg-neutral-100 p-4 border border-neutral-200 rounded-sm space-y-1 text-[10px] text-neutral-600">
+                    <p className="font-bold uppercase tracking-wider text-[9px]">Base standard embarquée :</p>
+                    <p className="font-mono truncate">Fichier : {dbStatus?.sqlitePath || 'zara_database.sqlite'}</p>
+                    <p className="text-[9.5px] leading-relaxed text-neutral-500 font-medium pt-1">
+                      Zara Gallery s'exécute actuellement en mode autonome ultra-rapide sur base relationnelle SQLite locale, avec support de synchronisation MariaDB de production.
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1581,7 +1710,7 @@ export default function TeamManagement({
               <div className="p-8 border border-neutral-150 bg-white shadow-sm space-y-6">
                 <div>
                   <h4 className="text-lg font-black uppercase tracking-tighter">
-                    Maintenance Globale (Base SQLite)
+                    Maintenance Globale (Base {dbStatus?.activeDb || 'SQLite'})
                   </h4>
                   <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">
                     Sauvegardes brutes, SQL dumps, et injections système JSON
