@@ -46,6 +46,11 @@ async function syncAllStateToIndividualTables(parsed: any, isMariaDB: boolean, p
   try {
     if (!parsed) return;
 
+    // Optional Structured Sync Bypassing by Administrator
+    if (parsed.settings && parsed.settings.isDatabaseSyncEnabled === false) {
+      return;
+    }
+
     if (isMariaDB) {
       // 1. Sync USERS
       if (parsed.users && Array.isArray(parsed.users)) {
@@ -437,8 +442,8 @@ async function syncAllStateToIndividualTables(parsed: any, isMariaDB: boolean, p
       if (parsed.settings) {
         const st = parsed.settings;
         await poolOrDb.query(`
-          INSERT INTO settings (id, is_payment_locked, manual_lock, auto_lock_enabled, opening_time, closing_time, is_cash_session_required, logo_url, store_name, store_address, store_phone, welcome_message_enabled, welcome_message_text)
-          VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO settings (id, is_payment_locked, manual_lock, auto_lock_enabled, opening_time, closing_time, is_cash_session_required, logo_url, store_name, store_address, store_phone, welcome_message_enabled, welcome_message_text, is_database_sync_enabled)
+          VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON DUPLICATE KEY UPDATE
             is_payment_locked = VALUES(is_payment_locked),
             manual_lock = VALUES(manual_lock),
@@ -451,7 +456,8 @@ async function syncAllStateToIndividualTables(parsed: any, isMariaDB: boolean, p
             store_address = VALUES(store_address),
             store_phone = VALUES(store_phone),
             welcome_message_enabled = VALUES(welcome_message_enabled),
-            welcome_message_text = VALUES(welcome_message_text)
+            welcome_message_text = VALUES(welcome_message_text),
+            is_database_sync_enabled = VALUES(is_database_sync_enabled)
         `, [
           st.isPaymentLocked ? 1 : 0,
           st.manualLock ? 1 : 0,
@@ -464,8 +470,139 @@ async function syncAllStateToIndividualTables(parsed: any, isMariaDB: boolean, p
           st.storeAddress || '',
           st.storePhone || '',
           st.welcomeMessageEnabled ? 1 : 0,
-          st.welcomeMessageText || ''
+          st.welcomeMessageText || '',
+          (st.isDatabaseSyncEnabled ?? true) ? 1 : 0
         ]);
+      }
+
+      // --- MARIADB CLEANUP FOR DELETED ITEMS ---
+      if (parsed.users && Array.isArray(parsed.users)) {
+        const ids = parsed.users.map((u: any) => u.id);
+        if (ids.length > 0) {
+          await poolOrDb.query(`DELETE FROM users WHERE id NOT IN (${ids.map(() => '?').join(',')})`, ids);
+        } else {
+          await poolOrDb.query(`DELETE FROM users`);
+        }
+      }
+
+      if (parsed.products && Array.isArray(parsed.products)) {
+        const pIds = parsed.products.map((p: any) => p.id);
+        if (pIds.length > 0) {
+          await poolOrDb.query(`DELETE FROM products WHERE id NOT IN (${pIds.map(() => '?').join(',')})`, pIds);
+        } else {
+          await poolOrDb.query(`DELETE FROM products`);
+        }
+
+        const vIds = parsed.products.reduce((acc: any[], p: any) => acc.concat((p.variants || []).map((v: any) => v.id || `${p.id}-${v.size}-${v.color}`)), []);
+        if (vIds.length > 0) {
+          await poolOrDb.query(`DELETE FROM product_variants WHERE id NOT IN (${vIds.map(() => '?').join(',')})`, vIds);
+        } else {
+          await poolOrDb.query(`DELETE FROM product_variants`);
+        }
+      }
+
+      if (parsed.orders && Array.isArray(parsed.orders)) {
+        const oIds = parsed.orders.map((o: any) => o.id);
+        if (oIds.length > 0) {
+          await poolOrDb.query(`DELETE FROM orders WHERE id NOT IN (${oIds.map(() => '?').join(',')})`, oIds);
+        } else {
+          await poolOrDb.query(`DELETE FROM orders`);
+        }
+
+        const itemIds = parsed.orders.reduce((acc: any[], o: any) => acc.concat((o.items || []).map((item: any) => item.id || `${o.id}-${item.product?.id || ''}-${item.variant?.id || ''}`)), []);
+        if (itemIds.length > 0) {
+          await poolOrDb.query(`DELETE FROM order_items WHERE id NOT IN (${itemIds.map(() => '?').join(',')})`, itemIds);
+        } else {
+          await poolOrDb.query(`DELETE FROM order_items`);
+        }
+
+        const payIds = parsed.orders.reduce((acc: any[], o: any) => acc.concat((o.payments || []).map((p: any) => `${o.id}-${p.method}`)), []);
+        if (payIds.length > 0) {
+          await poolOrDb.query(`DELETE FROM order_payments WHERE id NOT IN (${payIds.map(() => '?').join(',')})`, payIds);
+        } else {
+          await poolOrDb.query(`DELETE FROM order_payments`);
+        }
+      }
+
+      if (parsed.cashMovements && Array.isArray(parsed.cashMovements)) {
+        const ids = parsed.cashMovements.map((m: any) => m.id);
+        if (ids.length > 0) {
+          await poolOrDb.query(`DELETE FROM cash_movements WHERE id NOT IN (${ids.map(() => '?').join(',')})`, ids);
+        } else {
+          await poolOrDb.query(`DELETE FROM cash_movements`);
+        }
+      }
+
+      if (parsed.stockMovements && Array.isArray(parsed.stockMovements)) {
+        const ids = parsed.stockMovements.map((m: any) => m.id);
+        if (ids.length > 0) {
+          await poolOrDb.query(`DELETE FROM stock_movements WHERE id NOT IN (${ids.map(() => '?').join(',')})`, ids);
+        } else {
+          await poolOrDb.query(`DELETE FROM stock_movements`);
+        }
+      }
+
+      if (parsed.auditLogs && Array.isArray(parsed.auditLogs)) {
+        const ids = parsed.auditLogs.map((l: any) => l.id);
+        if (ids.length > 0) {
+          await poolOrDb.query(`DELETE FROM audit_logs WHERE id NOT IN (${ids.map(() => '?').join(',')})`, ids);
+        } else {
+          await poolOrDb.query(`DELETE FROM audit_logs`);
+        }
+      }
+
+      if (parsed.customers && Array.isArray(parsed.customers)) {
+        const ids = parsed.customers.map((c: any) => c.id);
+        if (ids.length > 0) {
+          await poolOrDb.query(`DELETE FROM customers WHERE id NOT IN (${ids.map(() => '?').join(',')})`, ids);
+        } else {
+          await poolOrDb.query(`DELETE FROM customers`);
+        }
+      }
+
+      if (parsed.promotions && Array.isArray(parsed.promotions)) {
+        const ids = parsed.promotions.map((p: any) => p.id);
+        if (ids.length > 0) {
+          await poolOrDb.query(`DELETE FROM promotions WHERE id NOT IN (${ids.map(() => '?').join(',')})`, ids);
+        } else {
+          await poolOrDb.query(`DELETE FROM promotions`);
+        }
+      }
+
+      if (parsed.pendingTickets && Array.isArray(parsed.pendingTickets)) {
+        const ids = parsed.pendingTickets.map((t: any) => t.id);
+        if (ids.length > 0) {
+          await poolOrDb.query(`DELETE FROM pending_tickets WHERE id NOT IN (${ids.map(() => '?').join(',')})`, ids);
+        } else {
+          await poolOrDb.query(`DELETE FROM pending_tickets`);
+        }
+      }
+
+      if (parsed.wholesalers && Array.isArray(parsed.wholesalers)) {
+        const ids = parsed.wholesalers.map((w: any) => w.id);
+        if (ids.length > 0) {
+          await poolOrDb.query(`DELETE FROM wholesalers WHERE id NOT IN (${ids.map(() => '?').join(',')})`, ids);
+        } else {
+          await poolOrDb.query(`DELETE FROM wholesalers`);
+        }
+      }
+
+      if (parsed.wholesaleOrders && Array.isArray(parsed.wholesaleOrders)) {
+        const ids = parsed.wholesaleOrders.map((o: any) => o.id);
+        if (ids.length > 0) {
+          await poolOrDb.query(`DELETE FROM wholesale_orders WHERE id NOT IN (${ids.map(() => '?').join(',')})`, ids);
+        } else {
+          await poolOrDb.query(`DELETE FROM wholesale_orders`);
+        }
+      }
+
+      if (parsed.sessionsHistory && Array.isArray(parsed.sessionsHistory)) {
+        const ids = parsed.sessionsHistory.map((s: any) => s.id);
+        if (ids.length > 0) {
+          await poolOrDb.query(`DELETE FROM sessions_history WHERE id NOT IN (${ids.map(() => '?').join(',')})`, ids);
+        } else {
+          await poolOrDb.query(`DELETE FROM sessions_history`);
+        }
       }
     } else {
       // --- SQLITE SCHEMA ---
@@ -868,8 +1005,8 @@ async function syncAllStateToIndividualTables(parsed: any, isMariaDB: boolean, p
       if (parsed.settings) {
         const st = parsed.settings;
         runSqliteUpsert(`
-          INSERT INTO settings (id, is_payment_locked, manual_lock, auto_lock_enabled, opening_time, closing_time, is_cash_session_required, logo_url, store_name, store_address, store_phone, welcome_message_enabled, welcome_message_text)
-          VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO settings (id, is_payment_locked, manual_lock, auto_lock_enabled, opening_time, closing_time, is_cash_session_required, logo_url, store_name, store_address, store_phone, welcome_message_enabled, welcome_message_text, is_database_sync_enabled)
+          VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(id) DO UPDATE SET
             is_payment_locked = excluded.is_payment_locked,
             manual_lock = excluded.manual_lock,
@@ -882,7 +1019,8 @@ async function syncAllStateToIndividualTables(parsed: any, isMariaDB: boolean, p
             store_address = excluded.store_address,
             store_phone = excluded.store_phone,
             welcome_message_enabled = excluded.welcome_message_enabled,
-            welcome_message_text = excluded.welcome_message_text
+            welcome_message_text = excluded.welcome_message_text,
+            is_database_sync_enabled = excluded.is_database_sync_enabled
         `, [
           st.isPaymentLocked ? 1 : 0,
           st.manualLock ? 1 : 0,
@@ -895,8 +1033,139 @@ async function syncAllStateToIndividualTables(parsed: any, isMariaDB: boolean, p
           st.storeAddress || '',
           st.storePhone || '',
           st.welcomeMessageEnabled ? 1 : 0,
-          st.welcomeMessageText || ''
+          st.welcomeMessageText || '',
+          (st.isDatabaseSyncEnabled ?? true) ? 1 : 0
         ]);
+      }
+
+      // --- SQLITE CLEANUP FOR DELETED ITEMS ---
+      if (parsed.users && Array.isArray(parsed.users)) {
+        const ids = parsed.users.map((u: any) => u.id);
+        if (ids.length > 0) {
+          poolOrDb.prepare(`DELETE FROM users WHERE id NOT IN (${ids.map(() => '?').join(',')})`).run(...ids);
+        } else {
+          poolOrDb.prepare(`DELETE FROM users`).run();
+        }
+      }
+
+      if (parsed.products && Array.isArray(parsed.products)) {
+        const pIds = parsed.products.map((p: any) => p.id);
+        if (pIds.length > 0) {
+          poolOrDb.prepare(`DELETE FROM products WHERE id NOT IN (${pIds.map(() => '?').join(',')})`).run(...pIds);
+        } else {
+          poolOrDb.prepare(`DELETE FROM products`).run();
+        }
+
+        const vIds = parsed.products.reduce((acc: any[], p: any) => acc.concat((p.variants || []).map((v: any) => v.id || `${p.id}-${v.size}-${v.color}`)), []);
+        if (vIds.length > 0) {
+          poolOrDb.prepare(`DELETE FROM product_variants WHERE id NOT IN (${vIds.map(() => '?').join(',')})`).run(...vIds);
+        } else {
+          poolOrDb.prepare(`DELETE FROM product_variants`).run();
+        }
+      }
+
+      if (parsed.orders && Array.isArray(parsed.orders)) {
+        const oIds = parsed.orders.map((o: any) => o.id);
+        if (oIds.length > 0) {
+          poolOrDb.prepare(`DELETE FROM orders WHERE id NOT IN (${oIds.map(() => '?').join(',')})`).run(...oIds);
+        } else {
+          poolOrDb.prepare(`DELETE FROM orders`).run();
+        }
+
+        const itemIds = parsed.orders.reduce((acc: any[], o: any) => acc.concat((o.items || []).map((item: any) => item.id || `${o.id}-${item.product?.id || ''}-${item.variant?.id || ''}`)), []);
+        if (itemIds.length > 0) {
+          poolOrDb.prepare(`DELETE FROM order_items WHERE id NOT IN (${itemIds.map(() => '?').join(',')})`).run(...itemIds);
+        } else {
+          poolOrDb.prepare(`DELETE FROM order_items`).run();
+        }
+
+        const payIds = parsed.orders.reduce((acc: any[], o: any) => acc.concat((o.payments || []).map((p: any) => `${o.id}-${p.method}`)), []);
+        if (payIds.length > 0) {
+          poolOrDb.prepare(`DELETE FROM order_payments WHERE id NOT IN (${payIds.map(() => '?').join(',')})`).run(...payIds);
+        } else {
+          poolOrDb.prepare(`DELETE FROM order_payments`).run();
+        }
+      }
+
+      if (parsed.cashMovements && Array.isArray(parsed.cashMovements)) {
+        const ids = parsed.cashMovements.map((m: any) => m.id);
+        if (ids.length > 0) {
+          poolOrDb.prepare(`DELETE FROM cash_movements WHERE id NOT IN (${ids.map(() => '?').join(',')})`).run(...ids);
+        } else {
+          poolOrDb.prepare(`DELETE FROM cash_movements`).run();
+        }
+      }
+
+      if (parsed.stockMovements && Array.isArray(parsed.stockMovements)) {
+        const ids = parsed.stockMovements.map((m: any) => m.id);
+        if (ids.length > 0) {
+          poolOrDb.prepare(`DELETE FROM stock_movements WHERE id NOT IN (${ids.map(() => '?').join(',')})`).run(...ids);
+        } else {
+          poolOrDb.prepare(`DELETE FROM stock_movements`).run();
+        }
+      }
+
+      if (parsed.auditLogs && Array.isArray(parsed.auditLogs)) {
+        const ids = parsed.auditLogs.map((l: any) => l.id);
+        if (ids.length > 0) {
+          poolOrDb.prepare(`DELETE FROM audit_logs WHERE id NOT IN (${ids.map(() => '?').join(',')})`).run(...ids);
+        } else {
+          poolOrDb.prepare(`DELETE FROM audit_logs`).run();
+        }
+      }
+
+      if (parsed.customers && Array.isArray(parsed.customers)) {
+        const ids = parsed.customers.map((c: any) => c.id);
+        if (ids.length > 0) {
+          poolOrDb.prepare(`DELETE FROM customers WHERE id NOT IN (${ids.map(() => '?').join(',')})`).run(...ids);
+        } else {
+          poolOrDb.prepare(`DELETE FROM customers`).run();
+        }
+      }
+
+      if (parsed.promotions && Array.isArray(parsed.promotions)) {
+        const ids = parsed.promotions.map((p: any) => p.id);
+        if (ids.length > 0) {
+          poolOrDb.prepare(`DELETE FROM promotions WHERE id NOT IN (${ids.map(() => '?').join(',')})`).run(...ids);
+        } else {
+          poolOrDb.prepare(`DELETE FROM promotions`).run();
+        }
+      }
+
+      if (parsed.pendingTickets && Array.isArray(parsed.pendingTickets)) {
+        const ids = parsed.pendingTickets.map((t: any) => t.id);
+        if (ids.length > 0) {
+          poolOrDb.prepare(`DELETE FROM pending_tickets WHERE id NOT IN (${ids.map(() => '?').join(',')})`).run(...ids);
+        } else {
+          poolOrDb.prepare(`DELETE FROM pending_tickets`).run();
+        }
+      }
+
+      if (parsed.wholesalers && Array.isArray(parsed.wholesalers)) {
+        const ids = parsed.wholesalers.map((w: any) => w.id);
+        if (ids.length > 0) {
+          poolOrDb.prepare(`DELETE FROM wholesalers WHERE id NOT IN (${ids.map(() => '?').join(',')})`).run(...ids);
+        } else {
+          poolOrDb.prepare(`DELETE FROM wholesalers`).run();
+        }
+      }
+
+      if (parsed.wholesaleOrders && Array.isArray(parsed.wholesaleOrders)) {
+        const ids = parsed.wholesaleOrders.map((o: any) => o.id);
+        if (ids.length > 0) {
+          poolOrDb.prepare(`DELETE FROM wholesale_orders WHERE id NOT IN (${ids.map(() => '?').join(',')})`).run(...ids);
+        } else {
+          poolOrDb.prepare(`DELETE FROM wholesale_orders`).run();
+        }
+      }
+
+      if (parsed.sessionsHistory && Array.isArray(parsed.sessionsHistory)) {
+        const ids = parsed.sessionsHistory.map((s: any) => s.id);
+        if (ids.length > 0) {
+          poolOrDb.prepare(`DELETE FROM sessions_history WHERE id NOT IN (${ids.map(() => '?').join(',')})`).run(...ids);
+        } else {
+          poolOrDb.prepare(`DELETE FROM sessions_history`).run();
+        }
       }
     }
   } catch (error: any) {
@@ -1050,9 +1319,16 @@ async function startServer() {
       id INTEGER PRIMARY KEY,
       is_payment_locked INTEGER, manual_lock INTEGER, auto_lock_enabled INTEGER,
       opening_time TEXT, closing_time TEXT, is_cash_session_required INTEGER, logo_url TEXT,
-      store_name TEXT, store_address TEXT, store_phone TEXT, welcome_message_enabled INTEGER, welcome_message_text TEXT
+      store_name TEXT, store_address TEXT, store_phone TEXT, welcome_message_enabled INTEGER, welcome_message_text TEXT,
+      is_database_sync_enabled INTEGER
     );
   `);
+
+  try {
+    sqliteDb.exec(`ALTER TABLE settings ADD COLUMN is_database_sync_enabled INTEGER;`);
+  } catch (err) {
+    // If column already exists or table cannot be modified, fail silently
+  }
 
   if (useMariaDB) {
     console.log('🔄 Attempting structure connection to MariaDB...');
@@ -1299,7 +1575,8 @@ async function startServer() {
           store_address TEXT,
           store_phone VARCHAR(100),
           welcome_message_enabled INT,
-          welcome_message_text TEXT
+          welcome_message_text TEXT,
+          is_database_sync_enabled INT
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
       `);
     } catch (err: any) {

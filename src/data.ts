@@ -19,7 +19,8 @@ export const INITIAL_SETTINGS: AppSettings = {
   storeAddress: 'Ouagadougou, Burkina Faso',
   storePhone: '+226 25 30 00 00',
   welcomeMessageEnabled: true,
-  welcomeMessageText: 'QUE CETTE JOURNEE SOIT COURONNER DE SUCCES CE MESSAGE EST EDITER PAR L ADMIN'
+  welcomeMessageText: 'QUE CETTE JOURNEE SOIT COURONNER DE SUCCES CE MESSAGE EST EDITER PAR L ADMIN',
+  isDatabaseSyncEnabled: true
 };
 
 export const INITIAL_PROMOTIONS: Promotion[] = [

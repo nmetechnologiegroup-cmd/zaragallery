@@ -549,7 +549,7 @@ export default function TeamManagement({
   };
 
   // Safe wipe system with full validation
-  const executeValidatedPurge = () => {
+  const executeValidatedPurge = async () => {
     if (purgePin !== currentUser.pin && purgePin !== "270786") {
       setPurgeError("Code PIN de sécurité incorrect.");
       return;
@@ -561,17 +561,6 @@ export default function TeamManagement({
       return;
     }
 
-    // Set collections to minimum required
-    setOrders([]);
-    setWholesaleOrders([]);
-    setCustomers([]);
-    setCashMovements([]);
-    setStockMovements([]);
-    setMessages([]);
-    setPendingTickets([]);
-    setCurrentSession(null);
-    setSessionsHistory([]);
-
     const wipeLog: AuditLogEntry = {
       id: `LOG-PURGE-${Date.now()}`,
       timestamp: new Date().toISOString(),
@@ -580,13 +569,61 @@ export default function TeamManagement({
       details: `Purge complète sécurisée de la base effectuée par ${currentUser.name}. Toutes les ventes, les clients et les journaux financiers ont été réinitialisés.`,
       severity: "WARNING",
     };
-    setAuditLogs([wipeLog]);
 
-    setDbImportStatus({
-      message:
-        "Toutes les données opérationnelles ont été purgées avec succès !",
-      type: "success",
-    });
+    const dataToSave = {
+      products,
+      users,
+      orders: [],
+      cashMovements: [],
+      auditLogs: [wipeLog],
+      customers: [],
+      promotions,
+      stockMovements: [],
+      pendingTickets: [],
+      settings,
+      wholesalers: [],
+      wholesaleOrders: [],
+      currentSession: null,
+      sessionsHistory: [],
+      lastUpdated: new Date().toISOString()
+    };
+
+    try {
+      // Opt-out temporary local cache as well
+      localStorage.setItem('zg_local_cache', JSON.stringify(dataToSave));
+
+      // Force synchronous save to server to ensure database tables are purged!
+      await fetch('/api/data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(dataToSave)
+      });
+
+      // Update React local state for real-time display
+      setOrders([]);
+      setWholesaleOrders([]);
+      setCustomers([]);
+      setCashMovements([]);
+      setStockMovements([]);
+      setMessages([]);
+      setPendingTickets([]);
+      setCurrentSession(null);
+      setSessionsHistory([]);
+      setAuditLogs([wipeLog]);
+
+      setDbImportStatus({
+        message:
+          "Toutes les données opérationnelles ont été purgées avec succès !",
+        type: "success",
+      });
+    } catch (err: any) {
+      console.error("Purge failed:", err);
+      setDbImportStatus({
+        message: "Erreur lors de la purge sur le serveur. Réssayez plus tard.",
+        type: "error",
+      });
+    }
+
     setShowPurgeModal(false);
     setPurgeInput("");
     setPurgePin("");
@@ -844,11 +881,49 @@ export default function TeamManagement({
     setResetStep(3);
   };
 
-  const executeFullReset = () => {
-    localStorage.clear();
-    // Also try to clear server-side if local server is implemented and user uses it
-    // For now we assume typical AI Studio user intent: full wipe
-    window.location.reload();
+  const executeFullReset = async () => {
+    const wipeLog: AuditLogEntry = {
+      id: `LOG-RESET-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      user: currentUser.name,
+      action: "DATABASE_RESET",
+      details: `Réinitialisation totale effectuée par ${currentUser.name}. Ventes, stocks, clients et historiques ont été vidés.`,
+      severity: "WARNING",
+    };
+
+    const dataToSave = {
+      products,
+      users,
+      orders: [],
+      cashMovements: [],
+      auditLogs: [wipeLog],
+      customers: [],
+      promotions,
+      stockMovements: [],
+      pendingTickets: [],
+      settings,
+      wholesalers: [],
+      wholesaleOrders: [],
+      currentSession: null,
+      sessionsHistory: [],
+      lastUpdated: new Date().toISOString()
+    };
+
+    try {
+      localStorage.clear();
+
+      // Force synchronous save to server to ensure database tables are purged!
+      await fetch('/api/data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(dataToSave)
+      });
+
+      window.location.reload();
+    } catch (err) {
+      console.error("Full reset failed:", err);
+      window.location.reload();
+    }
   };
 
   return (
@@ -1303,6 +1378,36 @@ export default function TeamManagement({
                         />
                       </div>
                     )}
+                  </div>
+
+                  <div className="pt-4 border-t border-neutral-800 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-white">
+                          Synchronisation Relationnelle SQL
+                        </p>
+                        <p className="text-[9px] text-neutral-500 font-bold uppercase mt-1">
+                          Écrit en temps réel dans les tables individuelles (MariaDB/SQLite)
+                        </p>
+                      </div>
+                      <button
+                        onClick={() =>
+                          updateSettings({
+                            isDatabaseSyncEnabled:
+                              !(localSettings.isDatabaseSyncEnabled ?? true),
+                          })
+                        }
+                        className={`w-14 h-7 rounded-sm transition-all relative ${
+                          (localSettings.isDatabaseSyncEnabled ?? true) ? "bg-white" : "bg-neutral-800 border border-neutral-700"
+                        }`}
+                      >
+                        <div
+                          className={`w-5 h-5 absolute top-1 transition-all rounded-xs ${
+                            (localSettings.isDatabaseSyncEnabled ?? true) ? "bg-black right-1" : "bg-neutral-500 left-1"
+                          }`}
+                        />
+                      </button>
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4 pt-2">

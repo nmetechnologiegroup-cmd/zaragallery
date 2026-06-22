@@ -192,4 +192,5 @@ export interface AppSettings {
   storePhone?: string;
   welcomeMessageEnabled?: boolean;
   welcomeMessageText?: string;
+  isDatabaseSyncEnabled?: boolean;
 }
