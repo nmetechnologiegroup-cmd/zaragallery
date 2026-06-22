@@ -2,8 +2,7 @@
 -- Compatible with MariaDB 10+ and MySQL 8.0+
 -- Prepared for Debian deployment
 
-CREATE DATABASE IF NOT EXISTS `zara_db` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-USE `zara_db`;
+-- (Database selection handled by the command-line client)
 
 -- 1. Create table structure
 CREATE TABLE IF NOT EXISTS `app_state` (
